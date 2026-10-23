@@ -17,9 +17,11 @@ jobs:
         with:
           node-version: 24
 
+      # 钉版本安装，避免工具链升级导致"本地绿 CI 红"。
+      # 版本与本地开发版本一致，升级时先本地验证再改此处。
       - name: 安装 MoonBit
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s "0.1.20261012"
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: MoonBit 版本
@@ -43,8 +45,8 @@ jobs:
       - name: 测试（js 后端）
         run: moon test --target js
 
-      # 端到端：用真实工具链生成的音频文件验证读写，
-      # 而不是只跑内部单测。
+      # 端到端：样本在 tools/samples/ 里已提交，这里只安装读取工具。
+      # e2e 只用 ffmpeg 的读取能力，不依赖其编码器配置。
       - name: 安装对拍工具
         run: sudo apt-get update && sudo apt-get install -y ffmpeg flac
 
