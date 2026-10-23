@@ -116,6 +116,20 @@ fn read_le32(data : BytesView, offset : Int32) -> Int32 raise TagError {
 }
 
 ///|
+/// 读 4 字节小端 u32（**不**做 2^31 限制）。
+///
+/// 用于 serial number、页序号这类"随机/大值"的 uint32 字段——
+/// 它们不是长度，高位为 1 是常态，与 `read_le32` 的语义必须区分开。
+fn read_le32_raw(data : BytesView, offset : Int32) -> Int32 raise TagError {
+  require_range(data, offset, 4)
+  let b0 = data.at(offset).to_int()
+  let b1 = data.at(offset + 1).to_int()
+  let b2 = data.at(offset + 2).to_int()
+  let b3 = data.at(offset + 3).to_int()
+  b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+}
+
+///|
 /// 写 4 字节大端 u32（MP4 盒尺寸、ID3v2.3 帧尺寸等）。
 fn write_u32be(v : Int32) -> Bytes {
   Bytes::from_array([

@@ -48,6 +48,7 @@ import {
 | FLAC | VORBIS_COMMENT | ✅ vendor + 全部条目 | ✅ 改写（含 padding 复用） |
 | FLAC | 元数据块链 | ✅ 遍历（含保留类型块） | ✅ 原样保留 |
 | MP4/M4A | ilst | ✅ 全部条目 + 封面 | ✅ 改写（保留 mdat 与其它盒） |
+| Ogg | Vorbis Comment（Vorbis/Opus） | ✅ vendor + 全部条目 | ✅ 改写（音频页原样保留、PCM 零损失） |
 
 **明确不做**（及理由）：
 
@@ -60,9 +61,10 @@ import {
 - **流式增量编辑**：标签本身在文件头部（ID3v2）或尾部（APEv2），编辑必须
   一次性读入重写；流式只对音频解码有意义；
 - **MP4 sample table**：那是容器解复用层，属于另一个生态位；
-- **Ogg Vorbis / Opus 的 Vorbis Comment 写入**：本轮先交付 FLAC 路径
-  （FLAC 的 comment 载荷与 Ogg 的 packet 封帧方式不同，是两条独立实现路径），
-  读取侧已具备通用解析能力，写入留待后续版本。
+- **Ogg 的 PICTURE 块（METADATA_BLOCK_PICTURE）**：FLAC 的 PICTURE 语义
+  封装进 Ogg comment 的 base64 条目，属下一增量；
+- **Ogg 流的 seek/重新封装**：只重建头两页并保持音频页原样，页内字节
+  （含 CRC）不改——这是"无损重写"的边界。
 
 ## 实现路径
 

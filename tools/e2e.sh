@@ -31,7 +31,7 @@ bad() {
 }
 
 # 样本必须在仓库里
-for s in v24.mp3 v23.mp3 base.flac base.m4a cover.png; do
+for s in v24.mp3 v23.mp3 base.flac base.m4a cover.png test.ogg test.opus; do
   if [ ! -f "$SAMPLES/$s" ]; then
     echo "缺少测试样本 $SAMPLES/$s（用 tools/make_samples.sh 生成）"
     exit 1
@@ -104,6 +104,26 @@ if cmp -s "$tmp/a.pcm" "$tmp/c.pcm"; then
   pass "APEv2 写入后音频仍逐字节相同"
 else
   bad "APEv2 写入破坏了音频"
+fi
+
+echo "== Ogg Vorbis / Opus comment =="
+cp "$SAMPLES/test.ogg" "$tmp/w.ogg"
+cp "$SAMPLES/test.opus" "$tmp/w.opus"
+"$MOON" run cmd/tag --target wasm-gc -- ogg set "$tmp/w.ogg" "TITLE=改过的 Ogg 标题" "ALBUM=Ogg 新专辑" \
+  >/dev/null 2>&1
+"$MOON" run cmd/tag --target wasm-gc -- ogg set "$tmp/w.opus" "TITLE=改过的 Opus 标题" \
+  >/dev/null 2>&1
+ogg_out=$("$FFMPEG" -i "$tmp/w.ogg" -f null - 2>&1)
+echo "$ogg_out" | grep -q "TITLE.*改过的 Ogg 标题" && pass "ffmpeg 读回 Ogg TITLE" || bad "ffmpeg 读不到 Ogg TITLE"
+opus_out=$("$FFMPEG" -i "$tmp/w.opus" -f null - 2>&1)
+echo "$opus_out" | grep -q "TITLE.*改过的 Opus 标题" && pass "ffmpeg 读回 Opus TITLE" || bad "ffmpeg 读不到 Opus TITLE"
+# 音频零损失
+"$FFMPEG" -loglevel error -i "$SAMPLES/test.ogg" -f s16le -ac 1 -ar 44100 "$tmp/og1.pcm" -y
+"$FFMPEG" -loglevel error -i "$tmp/w.ogg" -f s16le -ac 1 -ar 44100 "$tmp/og2.pcm" -y
+if cmp -s "$tmp/og1.pcm" "$tmp/og2.pcm"; then
+  pass "Ogg 写入后 PCM 逐字节相同"
+else
+  bad "Ogg 音频被破坏"
 fi
 
 echo

@@ -89,9 +89,9 @@ fn main {
     return
   }
   let sub = args[base]
-  // ape / flac / mp4 的语法是 `<子命令> <show|set> <文件> ...`：
+  // ape / flac / mp4 / ogg 的语法是 `<子命令> <show|set> <文件> ...`：
   // 动作在文件之前，与其它子命令的 `<sub> <file> ...` 不同，单独解析。
-  if sub == "ape" || sub == "flac" || sub == "mp4" {
+  if sub == "ape" || sub == "flac" || sub == "mp4" || sub == "ogg" {
     if base + 2 >= args.length() {
       println("用法: moon run cmd/tag -- \{sub} show <file>")
       println("      moon run cmd/tag -- \{sub} set  <file> KEY=value ...")
@@ -119,6 +119,13 @@ fn main {
           "set" => cmd_flac_set(target, specs)
           _ =>
             println("未知 flac 子命令：\{action}（支持 show / set）")
+        }
+      "ogg" =>
+        match action {
+          "show" => cmd_ogg_show(target)
+          "set" => cmd_ogg_set(target, specs)
+          _ =>
+            println("未知 ogg 子命令：\{action}（支持 show / set）")
         }
       _ =>
         match action {

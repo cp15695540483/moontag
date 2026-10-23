@@ -2,6 +2,10 @@
 package "LL728/moontag"
 
 // Values
+pub const OGG_HEADER_SIZE : Int = 27
+
+pub fn assemble_packets(Bytes, Array[OggPage]) -> Array[Bytes]
+
 pub fn cover_of(Array[Mp4Tag]) -> Bytes?
 
 pub fn detect_format(BytesView) -> AudioFormat
@@ -14,9 +18,15 @@ pub fn field(String, String) -> TagField
 
 pub fn find_ilst(BytesView) -> Mp4Box? raise TagError
 
+pub fn make_page(Int, Int, Int, Int64, Bytes) -> Bytes
+
+pub fn make_page_multi(Int, Int, Int, Int64, Array[Bytes]) -> Bytes
+
 pub fn mp4_cover_tag(Bytes, Bool) -> Mp4Tag
 
 pub fn mp4_text_tag(String, String) -> Mp4Tag
+
+pub fn ogg_crc32(Bytes) -> UInt
 
 pub fn parse(BytesView) -> Id3Tag raise TagError
 
@@ -26,6 +36,10 @@ pub fn parse_ilst(BytesView, Mp4Box) -> Array[Mp4Tag] raise TagError
 
 pub fn parse_meta(BytesView) -> FlacMeta raise TagError
 
+pub fn parse_ogg_comment_payload(OggCommentLoc) -> VorbisComment raise TagError
+
+pub fn parse_page(Bytes, Int) -> OggPage raise TagError
+
 pub fn parse_picture(BytesView) -> Picture raise TagError
 
 pub fn parse_vorbis_comment(BytesView) -> VorbisComment raise TagError
@@ -33,6 +47,8 @@ pub fn parse_vorbis_comment(BytesView) -> VorbisComment raise TagError
 pub fn picture(String, PictureType, String, Bytes) -> Picture
 
 pub fn read_mp4_tags(BytesView) -> Array[Mp4Tag] raise TagError
+
+pub fn read_ogg_comment(Bytes) -> OggCommentLoc?
 
 pub fn read_track_info(BytesView) -> TrackInfo raise TagError
 
@@ -47,6 +63,8 @@ pub fn set_ape_tag(BytesView, ApeTag) -> Bytes raise TagError
 pub fn set_fields(BytesView, Array[TagField], WriteOptions) -> Bytes raise TagError
 
 pub fn set_mp4_tags(BytesView, Array[Mp4Tag]) -> Bytes raise TagError
+
+pub fn set_ogg_comment(Bytes, VorbisComment) -> Bytes raise TagError
 
 pub fn set_picture(BytesView, Picture?, WriteOptions) -> Bytes raise TagError
 
@@ -160,6 +178,27 @@ pub struct Mp4Tag {
   value : Bytes
   data_type : Int
 }
+
+pub struct OggCommentLoc {
+  payload : Bytes
+  end_offset : Int
+  serial : Int
+  is_opus : Bool
+}
+
+pub struct OggPage {
+  offset : Int
+  n_segments : Int
+  total_len : Int
+  body_offset : Int
+  is_bos : Bool
+  is_eos : Bool
+  is_continued : Bool
+  serial : Int
+  seq : Int
+  data : Bytes
+}
+pub fn OggPage::segment_len(Self, Int) -> Int
 
 pub struct Picture {
   mime : String
