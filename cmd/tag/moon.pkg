@@ -1,5 +1,5 @@
 import {
-  "LL728/moontag",
+  "cp15695540483/moontag",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/env",
   "moonbitlang/x/fs",

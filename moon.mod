@@ -1,10 +1,10 @@
-name = "LL728/moontag"
+name = "cp15695540483/moontag"
 
 version = "0.1.0"
 
 readme = "README.mbt.md"
 
-repository = "https://github.com/LL728/moontag"
+repository = "https://github.com/cp15695540483/moontag"
 
 license = "Apache-2.0"
 

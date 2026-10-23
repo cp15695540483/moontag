@@ -27,14 +27,14 @@ moontag 解决"它是什么、怎么改它"**，两者是互补关系而非竞�
 ## 安装
 
 ```bash
-moon add LL728/moontag
+moon add cp15695540483/moontag
 ```
 
 在 `moon.pkg` 里引入：
 
 ```
 import {
-  "LL728/moontag",
+  "cp15695540483/moontag",
 }
 ```
 

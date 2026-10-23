@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "LL728/moontag"
+package "cp15695540483/moontag"
 
 // Values
 pub const OGG_HEADER_SIZE : Int = 27
