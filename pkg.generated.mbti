@@ -1,0 +1,242 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "LL728/moontag"
+
+// Values
+pub fn cover_of(Array[Mp4Tag]) -> Bytes?
+
+pub fn detect_format(BytesView) -> AudioFormat
+
+pub fn empty_ape_tag() -> ApeTag
+
+pub fn empty_vorbis_comment(String) -> VorbisComment
+
+pub fn field(String, String) -> TagField
+
+pub fn find_ilst(BytesView) -> Mp4Box? raise TagError
+
+pub fn mp4_cover_tag(Bytes, Bool) -> Mp4Tag
+
+pub fn mp4_text_tag(String, String) -> Mp4Tag
+
+pub fn parse(BytesView) -> Id3Tag raise TagError
+
+pub fn parse_ape(BytesView) -> ApeTag? raise TagError
+
+pub fn parse_ilst(BytesView, Mp4Box) -> Array[Mp4Tag] raise TagError
+
+pub fn parse_meta(BytesView) -> FlacMeta raise TagError
+
+pub fn parse_picture(BytesView) -> Picture raise TagError
+
+pub fn parse_vorbis_comment(BytesView) -> VorbisComment raise TagError
+
+pub fn picture(String, PictureType, String, Bytes) -> Picture
+
+pub fn read_mp4_tags(BytesView) -> Array[Mp4Tag] raise TagError
+
+pub fn read_track_info(BytesView) -> TrackInfo raise TagError
+
+pub fn read_vorbis_comment(BytesView) -> VorbisComment? raise TagError
+
+pub fn serialize_picture(Picture, Int) -> Bytes raise TagError
+
+pub fn serialize_vorbis_comment(VorbisComment) -> Bytes
+
+pub fn set_ape_tag(BytesView, ApeTag) -> Bytes raise TagError
+
+pub fn set_fields(BytesView, Array[TagField], WriteOptions) -> Bytes raise TagError
+
+pub fn set_mp4_tags(BytesView, Array[Mp4Tag]) -> Bytes raise TagError
+
+pub fn set_picture(BytesView, Picture?, WriteOptions) -> Bytes raise TagError
+
+pub fn set_vorbis_comment(BytesView, VorbisComment) -> Bytes raise TagError
+
+pub fn split_strings(BytesView, TextEncoding, Int, Int) -> Array[String]
+
+pub fn text_of(Array[Mp4Tag], String) -> String?
+
+pub fn unsynchronise(BytesView) -> Bytes
+
+// Errors
+pub suberror TagError {
+  Truncated(offset~ : Int, need~ : Int, actual~ : Int)
+  NotTagged(format~ : String)
+  BadHeader(reason~ : String)
+  BadFrameHeader(reason~ : String)
+  FrameOutOfBounds(frame_id~ : String, size~ : Int, available~ : Int)
+  BadFrameData(frame_id~ : String, reason~ : String)
+  Unsupported(what~ : String)
+  UnsupportedVersion(version~ : Int)
+}
+pub fn TagError::message(Self) -> String
+
+// Types and methods
+pub struct ApeItem {
+  key : String
+  is_binary : Bool
+  value : Bytes
+}
+
+pub struct ApeTag {
+  items : Array[ApeItem]
+  size : Int
+  offset : Int
+}
+pub fn ApeTag::get(Self, String) -> Bytes?
+pub fn ApeTag::set(Self, String, Bytes) -> Self raise TagError
+pub fn ApeTag::text(Self, String) -> String?
+
+pub enum AudioFormat {
+  Mp3
+  Flac
+  Mp4
+  Unknown
+}
+pub fn AudioFormat::name(Self) -> String
+
+pub struct ExistingTag {
+  tag : Id3Tag?
+  size : Int
+}
+
+pub struct FlacBlock {
+  code : Int
+  offset : Int
+  length : Int
+  is_last : Bool
+}
+
+pub enum FlacBlockType {
+  StreamInfo
+  Padding
+  Application
+  SeekTable
+  VorbisComment
+  CueSheet
+  Picture
+  Reserved
+  Invalid
+}
+pub fn FlacBlockType::code(Self) -> Int
+pub fn FlacBlockType::from_code(Int) -> Self
+
+pub struct FlacMeta {
+  blocks : Array[FlacBlock]
+  audio_offset : Int
+}
+pub fn FlacMeta::block(Self, FlacBlockType) -> FlacBlock?
+
+pub struct Frame {
+  id : String
+  data : Bytes
+  status_flags : Int
+  format_flags : Int
+}
+pub fn Frame::as_text(Self) -> String? raise TagError
+
+pub struct Id3Tag {
+  major : Int
+  revision : Int
+  flags : Int
+  frames : Array[Frame]
+  total_size : Int
+}
+pub fn Id3Tag::frame(Self, String) -> Frame?
+pub fn Id3Tag::frames_with_id(Self, String) -> Array[Frame]
+pub fn Id3Tag::picture(Self) -> Picture? raise TagError
+pub fn Id3Tag::pictures(Self) -> Array[Picture] raise TagError
+pub fn Id3Tag::text(Self, String) -> String? raise TagError
+
+pub struct Mp4Box {
+  kind : String
+  offset : Int
+  length : Int
+  start : Int
+}
+
+pub struct Mp4Tag {
+  key : String
+  value : Bytes
+  data_type : Int
+}
+
+pub struct Picture {
+  mime : String
+  picture_type : PictureType
+  raw_type : Int
+  description : String
+  data : Bytes
+}
+
+pub(all) enum PictureType {
+  Other
+  FileIcon
+  OtherIcon
+  FrontCover
+  BackCover
+  LeafletPage
+  Media
+  LeadArtist
+  Artist
+  Conductor
+  Band
+  Composer
+  Lyricist
+  RecordingLocation
+  DuringRecording
+  DuringPerformance
+  MovieScreenCapture
+  BrightColouredFish
+  Illustration
+  BandLogotype
+  PublisherLogotype
+}
+pub fn PictureType::code(Self) -> Int
+pub fn PictureType::from_code(Int) -> Self
+
+pub struct TagField {
+  id : String
+  value : String
+}
+
+pub enum TextEncoding {
+  Latin1
+  Utf16Bom
+  Utf16Be
+  Utf8
+}
+pub fn TextEncoding::code(Self) -> Int
+pub fn TextEncoding::decode(Self, BytesView) -> String
+pub fn TextEncoding::from_code(Int) -> Self raise TagError
+pub fn TextEncoding::terminator_len(Self) -> Int
+
+pub struct TrackInfo {
+  format : AudioFormat
+  title : String?
+  artist : String?
+  album : String?
+  track : String?
+  date : String?
+  genre : String?
+  comment : String?
+  has_cover : Bool
+}
+
+pub struct VorbisComment {
+  vendor : String
+  entries : Array[String]
+}
+pub fn VorbisComment::get(Self, String) -> String?
+pub fn VorbisComment::get_all(Self, String) -> Array[String]
+pub fn VorbisComment::set_key(Self, String, String) -> Self raise TagError
+
+pub struct WriteOptions {
+  padding : Int
+  default_major : Int
+}
+pub fn WriteOptions::default() -> Self
+
+// Type aliases
+
+// Traits
