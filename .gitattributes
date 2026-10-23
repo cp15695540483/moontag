@@ -1,0 +1,5 @@
+# 统一用 LF：CI 在 Linux 上跑 moon fmt --check，
+# 若工作区是 CRLF 会与格式化器输出不一致而误报。
+* text=auto eol=lf
+
+*.sh text eol=lf
