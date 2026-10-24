@@ -17,15 +17,16 @@ jobs:
         with:
           node-version: 24
 
-      # 钉版本安装，避免工具链升级导致"本地绿 CI 红"。
-      # 版本与本地开发版本一致，升级时先本地验证再改此处。
+      # 安装 MoonBit。注：官方 CDN 只保留 latest/nightly，钉版本 URL 会 403；
+      # 因此用 latest，并在下一步打印版本留痕。若 latest 升级导致失败，
+      # 按打印出的版本在本地复现修复。
       - name: 安装 MoonBit
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s "0.1.20261012"
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s "latest"
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: MoonBit 版本
-        run: moon version
+        run: moon version --all
 
       - name: 更新注册表索引
         run: moon update
