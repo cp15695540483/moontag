@@ -21,6 +21,8 @@ pub enum AudioFormat {
   Flac
   /// MP4 / M4A（ilst）
   Mp4
+  /// Ogg（Vorbis / Opus 的 comment packet）
+  Ogg
   /// 无法识别
   Unknown
 }
@@ -28,6 +30,14 @@ pub enum AudioFormat {
 ///|
 /// 按文件魔数识别格式。
 pub fn detect_format(data : BytesView) -> AudioFormat {
+  // Ogg：页头魔数 OggS
+  if data.length() >= 4 &&
+    data.at(0) == b'O' &&
+    data.at(1) == b'g' &&
+    data.at(2) == b'g' &&
+    data.at(3) == b'S' {
+    return Ogg
+  }
   if data.length() >= 4 &&
     data.at(0) == b'f' &&
     data.at(1) == b'L' &&
@@ -82,7 +92,34 @@ pub fn read_track_info(data : BytesView) -> TrackInfo raise TagError {
     Flac => read_flac_info(data)
     Mp4 => read_mp4_info(data)
     Mp3 => read_mp3_info(data)
+    Ogg => read_ogg_info(data)
     Unknown => empty_info(Unknown)
+  }
+}
+
+///|
+/// Ogg（Vorbis / Opus）的统一视图。
+///
+/// Ogg 的 comment 读取接口基于 `Bytes`（页解析需要随机访问），这里一次性
+/// 物化视图——调用方本就把整个文件读进了内存，`read_track_info` 是便利入口，
+/// 需要零拷贝时请直接用 `read_ogg_comment`。
+fn read_ogg_info(data : BytesView) -> TrackInfo raise TagError {
+  let raw = slice_bytes(data, 0, data.length())
+  let loc = match read_ogg_comment(raw) {
+    Some(l) => l
+    None => return empty_info(Ogg)
+  }
+  let vc = parse_ogg_comment_payload(loc)
+  {
+    format: Ogg,
+    title: vc.get("TITLE"),
+    artist: vc.get("ARTIST"),
+    album: vc.get("ALBUM"),
+    track: vc.get("TRACKNUMBER"),
+    date: vc.get("DATE"),
+    genre: vc.get("GENRE"),
+    comment: vc.get("COMMENT"),
+    has_cover: false,
   }
 }
 
@@ -124,29 +161,85 @@ fn read_mp4_info(data : BytesView) -> TrackInfo raise TagError {
 }
 
 ///|
-/// MP3 的统一视图。
+/// MP3 的统一视图：ID3v2 优先，缺失的字段逐项回退到文件尾部的 APEv2。
+///
+/// 现实中两类文件都存在——只有 ID3v2 的、只有 APEv2 的（ape 生态）、
+/// 以及两者并存的（转换工具留下的双标签）。只看 ID3v2 会漏掉后两种。
 fn read_mp3_info(data : BytesView) -> TrackInfo raise TagError {
-  // 没有 ID3v2 标签时退回空视图（MP3 也可能只有 APEv2）
-  let tag_opt : Id3Tag? = Some(parse(data)) catch { _ => None }
-  let tag = match tag_opt {
-    None => return empty_info(Mp3)
-    Some(t) => t
+  let id3 : Id3Tag? = Some(parse(data)) catch { _ => None }
+  let ape : ApeTag? = parse_ape(data) catch { _ => None }
+  if id3 is None && ape is None {
+    return empty_info(Mp3)
   }
   // v2.3 用 TYER，v2.4 用 TDRC
-  let date = match tag.text("TDRC") {
-    Some(d) => Some(d)
-    None => tag.text("TYER")
+  let id3_date = match id3 {
+    Some(t) =>
+      match t.text("TDRC") {
+        Some(d) => Some(d)
+        None => t.text("TYER")
+      }
+    None => None
   }
   {
     format: Mp3,
-    title: tag.text("TIT2"),
-    artist: tag.text("TPE1"),
-    album: tag.text("TALB"),
-    track: tag.text("TRCK"),
-    date,
-    genre: tag.text("TCON"),
-    comment: tag.text("COMM"),
-    has_cover: tag.picture() is Some(_),
+    title: mp3_field(id3, ape, "TIT2", "Title"),
+    artist: mp3_field(id3, ape, "TPE1", "Artist"),
+    album: mp3_field(id3, ape, "TALB", "Album"),
+    track: mp3_field(id3, ape, "TRCK", "Track"),
+    date: match id3_date {
+      Some(d) => Some(d)
+      None => ape_text(ape, "Year")
+    },
+    genre: mp3_field(id3, ape, "TCON", "Genre"),
+    comment: mp3_field(id3, ape, "COMM", "Comment"),
+    has_cover: mp3_has_cover(id3, ape),
+  }
+}
+
+///|
+/// ID3v2 帧优先，缺失时回退 APEv2 条目（APEv2 键名大小写不敏感）。
+fn mp3_field(
+  id3 : Id3Tag?,
+  ape : ApeTag?,
+  id3_key : String,
+  ape_key : String,
+) -> String? raise TagError {
+  let v = match id3 {
+    Some(t) => t.text(id3_key)
+    None => None
+  }
+  match v {
+    Some(_) => v
+    None =>
+      match ape {
+        Some(a) => a.text(ape_key)
+        None => None
+      }
+  }
+}
+
+///|
+/// 取 APEv2 文本字段。
+fn ape_text(ape : ApeTag?, key : String) -> String? {
+  match ape {
+    Some(a) => a.text(key)
+    None => None
+  }
+}
+
+///|
+/// 封面：ID3v2 的 APIC 或 APEv2 的 `Cover Art (Front)`。
+fn mp3_has_cover(id3 : Id3Tag?, ape : ApeTag?) -> Bool raise TagError {
+  let from_id3 = match id3 {
+    Some(t) => t.picture() is Some(_)
+    None => false
+  }
+  if from_id3 {
+    return true
+  }
+  match ape {
+    Some(a) => a.get("Cover Art (Front)") is Some(_)
+    None => false
   }
 }
 
@@ -173,6 +266,7 @@ pub fn AudioFormat::name(self : AudioFormat) -> String {
     Mp3 => "MP3 / ID3v2"
     Flac => "FLAC / Vorbis Comment"
     Mp4 => "MP4 / ilst"
+    Ogg => "Ogg / Vorbis Comment"
     Unknown => "未知格式"
   }
 }

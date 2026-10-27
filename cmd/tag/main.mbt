@@ -81,11 +81,18 @@ fn main {
   }
   if base + 1 >= args.length() {
     println("用法:")
-    println("  moon run cmd/tag -- show  <file>")
-    println("  moon run cmd/tag -- set   <file> <ID>=<value> ...")
-    println("  moon run cmd/tag -- apic  <file> <out-image>")
-    println("  moon run cmd/tag -- apics <file>")
-    println("  moon run cmd/tag -- cover <file> <image>")
+    println(
+      "  moon run cmd/tag -- show  <file>                统一视图（自动识别格式）",
+    )
+    println("  moon run cmd/tag -- dump  <file>                原始视图")
+    println(
+      "  moon run cmd/tag -- set   <file> ID=value ...   写入（自动识别格式）",
+    )
+    println("  moon run cmd/tag -- flac|ape|ogg|mp4 show <file>")
+    println("  moon run cmd/tag -- flac|ape|ogg|mp4 set  <file> KEY=value ...")
+    println("  moon run cmd/tag -- apic  <file> <out-image>    提取封面")
+    println("  moon run cmd/tag -- apics <file>                列出封面")
+    println("  moon run cmd/tag -- cover <file> <image>        嵌入封面")
     return
   }
   let sub = args[base]
@@ -189,7 +196,7 @@ fn main {
       }
     _ =>
       println(
-        "未知子命令：\{sub}（支持 show / dump / set / flac / ape / mp4 / apic / apics / cover）",
+        "未知子命令：\{sub}（支持 show / dump / set / flac / ape / mp4 / ogg / apic / apics / cover）",
       )
   }
 }

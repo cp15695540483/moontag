@@ -414,3 +414,49 @@ test "F6 faststart（moov 前置）：标签增长时 stco 偏移自动修正" {
     true,
   )
 }
+
+///|
+test "F6 负例：fragmented MP4（moof）必须拒绝改写而非静默损坏" {
+  let ftyp = tb_box(
+    "ftyp",
+    Bytes::from_array([
+      0x4D, 0x34, 0x41, 0x20, 0x69, 0x73, 0x6F, 0x6D, 0x4D, 0x34, 0x41, 0x20,
+    ]),
+  )
+  let moov = tb_box("moov", tb_box("mvhd", Bytes::make(20, 0x00)))
+  let moof = tb_box("moof", Bytes::make(16, 0x00))
+  let mdat = tb_box("mdat", Bytes::make(32, 0xBB))
+  let file = ftyp.add(moov).add(moof).add(mdat)
+  try {
+    let _ = set_mp4_tags(file.exact_view(), [mp4_text_tag("©nam", "X")])
+    abort("fMP4 应当被拒绝")
+  } catch {
+    TagError::Unsupported(..) => ()
+    _ => abort("错误类型应为 Unsupported")
+  }
+}
+
+///|
+test "F6 负例：moov 内含 mvex 的 fMP4 也拒绝" {
+  let ftyp = tb_box(
+    "ftyp",
+    Bytes::from_array([
+      0x4D, 0x34, 0x41, 0x20, 0x69, 0x73, 0x6F, 0x6D, 0x4D, 0x34, 0x41, 0x20,
+    ]),
+  )
+  let moov = tb_box(
+    "moov",
+    tb_box("mvhd", Bytes::make(20, 0x00)).add(
+      tb_box("mvex", Bytes::make(12, 0x00)),
+    ),
+  )
+  let mdat = tb_box("mdat", Bytes::make(32, 0xBB))
+  let file = ftyp.add(moov).add(mdat)
+  try {
+    let _ = set_mp4_tags(file.exact_view(), [mp4_text_tag("©nam", "X")])
+    abort("含 mvex 的 fMP4 应当被拒绝")
+  } catch {
+    TagError::Unsupported(..) => ()
+    _ => abort("错误类型应为 Unsupported")
+  }
+}

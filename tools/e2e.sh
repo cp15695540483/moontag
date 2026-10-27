@@ -31,7 +31,7 @@ bad() {
 }
 
 # 样本必须在仓库里
-for s in v24.mp3 v23.mp3 base.flac base.m4a faststart.m4a cover.png test.ogg test.opus; do
+for s in v24.mp3 v23.mp3 noid3.mp3 base.flac base.m4a faststart.m4a cover.png test.ogg test.opus; do
   if [ ! -f "$SAMPLES/$s" ]; then
     echo "缺少测试样本 $SAMPLES/$s（用 tools/make_samples.sh 生成）"
     exit 1
@@ -147,6 +147,21 @@ if cmp -s "$tmp/og1.pcm" "$tmp/og2.pcm"; then
 else
   bad "Ogg 音频被破坏"
 fi
+
+# 统一视图必须覆盖五种标签场景（MP3/FLAC/M4A/Ogg Vorbis/Ogg Opus），
+# 且 MP3 的标签来源要能回退到 APEv2。
+echo "== 统一视图覆盖范围 =="
+uv() { "$MOON" run cmd/tag --target wasm-gc -- show "$1" 2>&1; }
+uv "$SAMPLES/v24.mp3"      | grep -q "MP3 / ID3v2"           && pass "统一视图识别 MP3"      || bad "统一视图不识别 MP3"
+uv "$SAMPLES/base.flac"    | grep -q "FLAC / Vorbis Comment" && pass "统一视图识别 FLAC"     || bad "统一视图不识别 FLAC"
+uv "$SAMPLES/base.m4a"     | grep -q "MP4 / ilst"            && pass "统一视图识别 M4A"      || bad "统一视图不识别 M4A"
+uv "$SAMPLES/test.ogg"     | grep -q "Ogg / Vorbis Comment"  && pass "统一视图识别 Ogg Vorbis" || bad "统一视图不识别 Ogg Vorbis"
+uv "$SAMPLES/test.opus"    | grep -q "Ogg / Vorbis Comment"  && pass "统一视图识别 Ogg Opus"  || bad "统一视图不识别 Ogg Opus"
+# 无 ID3v2 的 MP3：写入 APEv2 后统一视图应能读出
+cp "$SAMPLES/noid3.mp3" "$tmp/apeonly.mp3"
+"$MOON" run cmd/tag --target wasm-gc -- ape set "$tmp/apeonly.mp3" "Title=ApeFallback" \
+  >/dev/null 2>&1
+uv "$tmp/apeonly.mp3" | grep -q "ApeFallback" && pass "统一视图回退读 APEv2" || bad "统一视图未回退到 APEv2"
 
 echo
 if [ "$fail" -eq 0 ]; then

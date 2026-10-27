@@ -50,6 +50,25 @@ import {
 | MP4/M4A | ilst | ✅ 全部条目 + 封面 | ✅ 改写（保留 mdat 与其它盒、**修正 chunk 偏移**） |
 | Ogg | Vorbis Comment（Vorbis/Opus） | ✅ vendor + 全部条目 | ✅ 改写（音频页原样保留、PCM 零损失） |
 
+### 统一视图（`read_track_info`）覆盖范围
+
+`read_track_info` 一次调用识别并读取**五种标签场景**：
+
+| 输入 | 识别依据 | 标签来源 |
+|---|---|---|
+| MP3 | `ID3` 前缀或 MPEG 帧同步 | ID3v2（TIT2/TPE1/…）；**缺失字段回退到文件尾部 APEv2**（Title/Artist/…） |
+| FLAC | `fLaC` 魔数 | VORBIS_COMMENT |
+| M4A / MP4 | 第 4..8 字节 `ftyp` | `moov/udta/meta/ilst` |
+| Ogg Vorbis | `OggS` 页头魔数 | comment packet（`\x03vorbis`） |
+| Ogg Opus | `OggS` 页头魔数 | comment packet（`OpusTags`） |
+
+MP3 的字段优先级是 **ID3v2 > APEv2**：只有 APEv2 的文件（ape 生态常见）、
+两者并存的文件（转换工具留下的双标签）都能读出内容。封面同时识别
+ID3v2 的 APIC 与 APEv2 的 `Cover Art (Front)`。
+
+Ogg 的 comment 接口基于 `Bytes`（页解析需随机访问），统一视图内部会把
+`BytesView` 物化一份；需要零拷贝时直接用 `read_ogg_comment`。
+
 ### MP4 的媒体定位（改标签为什么必须动样本表偏移）
 
 MP4 把音频数据的**绝对字节偏移**记在 `moov/trak/mdia/minf/stbl` 的
@@ -59,18 +78,24 @@ MP4 把音频数据的**绝对字节偏移**记在 `moov/trak/mdia/minf/stbl` �
 
 本项目的职责划分：
 
-- **不做**：样本表的语义解析与解复用（不重建 `stbl`、不做 demux/mux、不碰 fMP4）；
+- **不做**：样本表的语义解析与解复用（不重建 `stbl`、不做 demux/mux）；
 - **必须做**：当 `moov` 尺寸变化且它位于 `mdat` 之前时，把**全部** `trak` 的
   `stco`/`co64` 内已有偏移按 `delta` 平移（`co64` 的 64 位形式一并处理）。
   这不是可选项，而是"改写文件"的组成部分。
 
 **已验证的硬场景**：faststart 文件（`moov` 在前，其后仅 8 字节 `free`），
-写入 200 字符标签使 `moov` 增长 228 字节，预留空间不足 → `mdat` 后移 →
-偏移修正后 `ffmpeg` 正常解码，裸 PCM 与改写前逐字节一致；
+写入标题 + 200 字符艺术家使 `moov` 增长 238 字节，预留空间不足 → `mdat` 后移 →
+偏移修正后 `ffmpeg` 正常解码，裸 PCM（266240 字节）与改写前逐字节一致；
 `tools/e2e.sh` 与单测都覆盖此场景，并有变异测试证明判据有判别力。
 
 **支持的 MP4 布局**：`moov` 前置（faststart）与 `moov` 尾置均可。
 `moov` 尾置时 `mdat` 不动，无需修正偏移（这是正确行为而非"勉强成立"）。
+
+**fragmented MP4（`moof` / `moov/mvex`）明确拒绝**：fMP4 的 chunk 位置记在
+`moof/traf/trun`（以及 `tfhd` 的 `base_data_offset`），不在 `stco`/`co64` 里。
+本实现不维护这些偏移，因此**写入时直接报 `Unsupported`**——静默改写会产出
+能通过解析、但音频已损坏的文件（实测 ffmpeg 报
+`Error submitting packet to decoder`）。读取（`read_mp4_tags`）仍可用。
 
 **明确不做**（及理由）：
 
@@ -84,8 +109,8 @@ MP4 把音频数据的**绝对字节偏移**记在 `moov/trak/mdia/minf/stbl` �
   一次性读入重写；流式只对音频解码有意义；
 - **MP4 的样本表语义层**：不解复用、不重建 `stbl`、不做 mux；但如上一节所述，
   **会读取并修正已有 `stco`/`co64` 偏移**以维持媒体定位；
-- **fragmented MP4（`moof`/`traf`/`tfhd` 的 `base_data_offset`）** 与
-  **64 位 `largesize` 盒**：不在支持内，遇到会明确报错；
+- **fragmented MP4**：写入时明确报 `Unsupported`（见上一节），读取可用；
+- **64 位 `largesize` 盒**：遇到明确报 `Unsupported`；
 - **不做 `moov` 后的 padding 复用**：`moov` 之后的 `free` 空间不保证存在
   （faststart 文件常仅 8 字节），本实现选择通用路径——一律按 `delta` 修正偏移，
   而不是"有 padding 才安全"；

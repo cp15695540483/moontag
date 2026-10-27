@@ -96,6 +96,14 @@ pub fn set_mp4_tags(
 /// 无需修正。
 fn rebuild_moov(data : BytesView, new_ilst : Bytes) -> Bytes raise TagError {
   let top = list_boxes(data, 0, data.length())
+  // fragmented MP4 的 chunk 位置记在 moof/traf/trun（及 tfhd 的 base_data_offset），
+  // 不在 stco/co64 里。本实现不维护这些偏移，必须**明确拒绝**——静默改写会产出
+  // 能通过解析、但音频已损坏的文件（实测 ffmpeg 报 "Error submitting packet to decoder"）。
+  for b in top {
+    if b.kind == "moof" {
+      raise Unsupported(what="fragmented MP4（moof）的标签改写")
+    }
+  }
   // 找 mdat 位置（判断 moov 是否在 mdat 之前）
   let mut first_mdat_start = -1
   for b in top {
@@ -111,6 +119,10 @@ fn rebuild_moov(data : BytesView, new_ilst : Bytes) -> Bytes raise TagError {
       found_moov = true
       let old_moov_total = b.length + 8
       let moov_children = list_boxes(data, b.offset, b.offset + b.length)
+      // moov 里有 mvex 也是 fragmented MP4 的标志（空 moov + moof 序列）
+      if find_box(moov_children, "mvex") is Some(_) {
+        raise Unsupported(what="fragmented MP4（mvex）的标签改写")
+      }
       // 处理 udta
       let new_udta = match find_box(moov_children, "udta") {
         None => make_box("udta", make_meta_with_ilst(new_ilst))

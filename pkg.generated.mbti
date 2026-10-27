@@ -109,6 +109,7 @@ pub enum AudioFormat {
   Mp3
   Flac
   Mp4
+  Ogg
   Unknown
 }
 pub fn AudioFormat::name(Self) -> String

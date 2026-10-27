@@ -153,3 +153,64 @@ test "F7 统一视图：Unknown 格式返回空视图" {
   @test.assert_eq(info.format is Unknown, true)
   @test.assert_eq(info.title is None, true)
 }
+
+///|
+test "F7 格式识别：OggS 魔数" {
+  let file = Bytes::from_array([0x4F, 0x67, 0x67, 0x53, 0x00, 0x02]).add(
+    Bytes::make(20, 0x00),
+  )
+  @test.assert_eq(detect_format(file.exact_view()) is Ogg, true)
+}
+
+///|
+test "F7 统一视图：Ogg（Vorbis）字段映射" {
+  let file = tb_vorbis_stream("vendor", [
+    "TITLE=Ogg标题", "ARTIST=Ogg艺术家",
+  ])
+  let info = read_track_info(file.exact_view())
+  @test.assert_eq(info.format is Ogg, true)
+  @test.assert_eq(info.title, Some("Ogg标题"))
+  @test.assert_eq(info.artist, Some("Ogg艺术家"))
+}
+
+///|
+test "F7 统一视图：Ogg 的格式名可读" {
+  @test.assert_eq(AudioFormat::Ogg.name(), "Ogg / Vorbis Comment")
+}
+
+///|
+test "F7 统一视图：MP3 无 ID3v2 时从尾部 APEv2 回退" {
+  // 只有 MP3 帧同步头，没有 ID3v2；标签放在文件尾部的 APEv2
+  let body = Bytes::from_array([0xFF, 0xFB, 0x90, 0x00]).add(
+    Bytes::make(200, 0x11),
+  )
+  let tag = empty_ape_tag()
+    .set("Title", @utf8.encode("Ape标题"))
+    .set("Artist", @utf8.encode("Ape艺术家"))
+    .set("Album", @utf8.encode("Ape专辑"))
+  let file = set_ape_tag(body.exact_view(), tag)
+  let info = read_track_info(file.exact_view())
+  @test.assert_eq(info.format is Mp3, true)
+  @test.assert_eq(info.title, Some("Ape标题"))
+  @test.assert_eq(info.artist, Some("Ape艺术家"))
+  @test.assert_eq(info.album, Some("Ape专辑"))
+}
+
+///|
+test "F7 统一视图：ID3v2 优先于 APEv2，缺的字段才回退" {
+  let body = Bytes::from_array([0xFF, 0xFB, 0x90, 0x00]).add(
+    Bytes::make(200, 0x11),
+  )
+  let ape = empty_ape_tag()
+    .set("Title", @utf8.encode("Ape标题"))
+    .set("Artist", @utf8.encode("Ape艺术家"))
+  let with_ape = set_ape_tag(body.exact_view(), ape)
+  // 前置一个只含 TIT2 的 ID3v2.4 标签
+  let frame = tb_frame(4, "TIT2", 0, tb_text(3, @utf8.encode("ID3标题")))
+  let id3 = tb_tag_body(4, 0, frame)
+  let file = id3.add(with_ape)
+  let info = read_track_info(file.exact_view())
+  // 标题来自 ID3v2，艺术家回退到 APEv2
+  @test.assert_eq(info.title, Some("ID3标题"))
+  @test.assert_eq(info.artist, Some("Ape艺术家"))
+}

@@ -32,6 +32,10 @@ mkdir -p "$DIR"
 "$FFMPEG" -loglevel error -f lavfi -i "sine=frequency=440:duration=3" \
   -c:a aac -metadata title="Short" -movflags +faststart \
   "$DIR/faststart.m4a" -y
+# 无 ID3v2 头的 MP3：用于验证统一视图从文件尾部 APEv2 回退读标签。
+"$FFMPEG" -loglevel error -f lavfi -i "sine=frequency=440:duration=1" \
+  -c:a libmp3lame -b:a 64k -write_id3v2 0 -id3v2_version 0 \
+  "$DIR/noid3.mp3" -y
 "$FFMPEG" -loglevel error -f lavfi -i "color=c=red:s=32x32:d=1" -frames:v 1 \
   "$DIR/cover.png" -y
 
