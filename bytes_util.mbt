@@ -139,3 +139,24 @@ fn write_u32be(v : Int32) -> Bytes {
     (v & 0xFF).to_byte(),
   ])
 }
+
+///|
+/// 读 4 字节大端 u64（MP4 co64 的 chunk offset）。
+fn read_be64(data : BytesView, offset : Int32) -> Int64 raise TagError {
+  require_range(data, offset, 8)
+  let mut v : Int64 = 0L
+  for i in 0..<8 {
+    v = (v << 8) | Int64::from_int(data.at(offset + i).to_int())
+  }
+  v
+}
+
+///|
+/// 写 4 字节大端 u64。
+fn write_be64(v : Int64) -> Bytes {
+  let out = @buffer.Buffer()
+  for shift in [56, 48, 40, 32, 24, 16, 8, 0] {
+    out.write_byte(((v >> shift) & 0xFFL).to_int().to_byte())
+  }
+  out.to_bytes()
+}

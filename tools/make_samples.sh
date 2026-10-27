@@ -27,6 +27,11 @@ mkdir -p "$DIR"
 "$FFMPEG" -loglevel error -f lavfi -i "sine=frequency=440:duration=1" \
   -c:a aac -metadata title="SampleTitle" \
   "$DIR/base.m4a" -y
+# faststart 布局：moov 在 mdat 之前，且 moov 后只有 8 字节 free。
+# 用于验证"标签增长后平移 mdat、必须修正 stco/co64 绝对偏移"的硬场景。
+"$FFMPEG" -loglevel error -f lavfi -i "sine=frequency=440:duration=3" \
+  -c:a aac -metadata title="Short" -movflags +faststart \
+  "$DIR/faststart.m4a" -y
 "$FFMPEG" -loglevel error -f lavfi -i "color=c=red:s=32x32:d=1" -frames:v 1 \
   "$DIR/cover.png" -y
 

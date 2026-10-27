@@ -1,7 +1,8 @@
 // mp4_wbtest.mbt
 //
 // F6 判据：MP4 盒树定位（尤其 meta 是 FullBox 的 +4 偏移）、
-// ilst 条目解析、data 盒的 version/flags/type 布局、写入 round-trip。
+// ilst 条目解析、data 盒的 version/flags/type 布局、写入 round-trip、
+// faststart 布局（moov 前置）的 stco/co64 偏移修正。
 
 ///|
 /// 拼一个 MP4 盒（尺寸自动计算）。
@@ -252,4 +253,164 @@ test "F6 无 ilst 时写入会新建整条 udta/meta/ilst 路径" {
   @test.assert_eq(out.has_suffix(Bytes::make(32, 0xBB)), true)
   // moov 里原有的 mvhd 保留
   @test.assert_eq(out.find(Bytes::make(20, 0x00)) is Some(_), true)
+}
+
+///|
+/// 拼一个 faststart MP4：ftyp + moov(含 stco) + mdat。
+/// stco 记录 mdat 的起始偏移（moov 之后）。
+fn tb_faststart_mp4(moov_payload : Bytes, mdat_payload : Bytes) -> Bytes {
+  let ftyp = tb_box(
+    "ftyp",
+    Bytes::from_array([
+      0x4D, 0x34, 0x41, 0x20, 0x69, 0x73, 0x6F, 0x6D, 0x4D, 0x34, 0x41, 0x20,
+    ]),
+  )
+  let moov = tb_box("moov", moov_payload)
+  let mdat = tb_box("mdat", mdat_payload)
+  ftyp.add(moov).add(mdat)
+}
+
+///|
+/// 拼一个 stco 盒：version(1)+flags(3)+entry_count(4)+entries(u32 BE)。
+fn tb_stco(offsets : Array[Int32]) -> Bytes {
+  let payload = @buffer.Buffer()
+  payload.write_bytes(Bytes::from_array([0x00, 0x00, 0x00, 0x00]))
+  payload.write_bytes(write_u32be(offsets.length()))
+  for off in offsets {
+    payload.write_bytes(write_u32be(off))
+  }
+  tb_box("stco", payload.to_bytes())
+}
+
+///|
+/// 读文件里的第一个 stco 盒的首个 offset。
+fn tb_first_chunk_offset(data : Bytes) -> Int32? {
+  let boxes = list_boxes(data.exact_view(), 0, data.length()) catch {
+    _ => return None
+  }
+  let moov = match find_box(boxes, "moov") {
+    None => return None
+    Some(b) => b
+  }
+  // moov → trak → mdia → minf → stbl → stco
+  let moov_children = list_boxes(
+    data.exact_view(),
+    moov.offset,
+    moov.offset + moov.length,
+  ) catch {
+    _ => return None
+  }
+  let trak = match find_box(moov_children, "trak") {
+    None => return None
+    Some(b) => b
+  }
+  let trak_children = list_boxes(
+    data.exact_view(),
+    trak.offset,
+    trak.offset + trak.length,
+  ) catch {
+    _ => return None
+  }
+  let mdia = match find_box(trak_children, "mdia") {
+    None => return None
+    Some(b) => b
+  }
+  let mdia_children = list_boxes(
+    data.exact_view(),
+    mdia.offset,
+    mdia.offset + mdia.length,
+  ) catch {
+    _ => return None
+  }
+  let minf = match find_box(mdia_children, "minf") {
+    None => return None
+    Some(b) => b
+  }
+  let minf_children = list_boxes(
+    data.exact_view(),
+    minf.offset,
+    minf.offset + minf.length,
+  ) catch {
+    _ => return None
+  }
+  let stbl = match find_box(minf_children, "stbl") {
+    None => return None
+    Some(b) => b
+  }
+  let stbl_children = list_boxes(
+    data.exact_view(),
+    stbl.offset,
+    stbl.offset + stbl.length,
+  ) catch {
+    _ => return None
+  }
+  let stco = match find_box(stbl_children, "stco") {
+    None => return None
+    Some(b) => b
+  }
+  let v = read_be(data.exact_view(), stco.offset + 8, 4) catch {
+    _ => return None
+  }
+  Some(v)
+}
+
+///|
+test "F6 faststart（moov 前置）：标签增长时 stco 偏移自动修正" {
+  // mdat 载荷 64 字节，放在 moov 之后；stco 记录 mdat 的绝对起始偏移
+  let mdat_payload = Bytes::make(64, 0xCC)
+  // 初始：ftyp(20) + moov + mdat；mdat 起始 = 20 + moov_len
+  // moov 内含 mvhd（占位）+ trak/mdia/minf/stbl/stco
+  let mvhd = tb_box("mvhd", Bytes::make(20, 0x00))
+  // 先算出 moov 的总长度（用于构造 stco 里的偏移）
+  // moov = 8(头) + mvhd(28) + trak(...);trk 内含 stco
+  // 用迭代法：先放一个占位 stco，算出长度，再用真实偏移重建
+  let stbl_placeholder = tb_box("stbl", tb_stco([0]))
+  let minf_placeholder = tb_box("minf", stbl_placeholder)
+  let mdia_placeholder = tb_box("mdia", minf_placeholder)
+  let trak_placeholder = tb_box("trak", mdia_placeholder)
+  let moov_len = 8 + mvhd.length() + trak_placeholder.length()
+  let mdat_start = 20 + moov_len
+  // 用真实 mdat_start 构造 stco
+  let stco = tb_stco([mdat_start])
+  let minf = tb_box("minf", tb_box("stbl", stco))
+  let mdia = tb_box("mdia", minf)
+  let trak = tb_box("trak", mdia)
+  let moov_payload = mvhd.add(trak)
+  let file = tb_faststart_mp4(moov_payload, mdat_payload)
+  // 验证 stco 原值
+  let orig_offset = match tb_first_chunk_offset(file) {
+    Some(v) => v
+    None => abort("未找到 stco")
+  }
+  @test.assert_eq(orig_offset, mdat_start)
+  // 写入更长的标签，moov 会变长
+  let long = String::make(300, 'B')
+  let out = set_mp4_tags(file.exact_view(), [
+    mp4_text_tag("©nam", "New"),
+    mp4_text_tag("©ART", long),
+  ])
+  // 新 stco 偏移必须指向新的 mdat 位置
+  let new_offset = match tb_first_chunk_offset(out) {
+    Some(v) => v
+    None => abort("写后未找到 stco")
+  }
+  let new_mdat_start = new_offset
+  // mdat 起始应该等于 stco 记录的值（偏移已修正）
+  let boxes = list_boxes(out.exact_view(), 0, out.length())
+  let mdat = match find_box(boxes, "mdat") {
+    None => abort("未找到 mdat")
+    Some(b) => b
+  }
+  @test.assert_eq(new_mdat_start, mdat.start)
+  // 原值应不同（moov 变长了）
+  @test.assert_eq(orig_offset != new_offset, true)
+  // mdat 载荷原样保留
+  @test.assert_eq(
+    out
+    .exact_view(start=mdat.offset, end=mdat.offset + 64)
+    .data()
+    .find(Bytes::make(64, 0xCC))
+    is Some(_),
+    true,
+  )
 }

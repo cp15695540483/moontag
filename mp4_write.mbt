@@ -88,14 +88,28 @@ pub fn set_mp4_tags(
 
 ///|
 /// 重建 moov：替换其中的 udta/meta/ilst，其余盒原样保留。
+///
+/// **媒体定位保持**：若 moov 在 mdat 之前（faststart 布局），moov 变长会让
+/// mdat 后移，此时 stco/co64 里的绝对 chunk offset 必须同步增加 delta，
+/// 否则播放器读到错位字节（实测：标签增长后 ffmpeg 报
+/// `Error submitting packet to decoder`）。moov 在 mdat 之后时 mdat 不动，
+/// 无需修正。
 fn rebuild_moov(data : BytesView, new_ilst : Bytes) -> Bytes raise TagError {
   let top = list_boxes(data, 0, data.length())
-  // 文件结构：文件头盒之前通常有 ftyp，moov 在中间或末尾
+  // 找 mdat 位置（判断 moov 是否在 mdat 之前）
+  let mut first_mdat_start = -1
+  for b in top {
+    if b.kind == "mdat" {
+      first_mdat_start = b.start
+      break
+    }
+  }
   let out = @buffer.Buffer()
   let mut found_moov = false
   for b in top {
     if b.kind == "moov" {
       found_moov = true
+      let old_moov_total = b.length + 8
       let moov_children = list_boxes(data, b.offset, b.offset + b.length)
       // 处理 udta
       let new_udta = match find_box(moov_children, "udta") {
@@ -154,14 +168,96 @@ fn rebuild_moov(data : BytesView, new_ilst : Bytes) -> Bytes raise TagError {
         }
       }
       moov_inner.write_bytes(new_udta)
-      let moov_bytes = make_box("moov", moov_inner.to_bytes())
-      out.write_bytes(moov_bytes)
+      let new_moov = make_box("moov", moov_inner.to_bytes())
+      let delta = new_moov.length() - old_moov_total
+      let moov_before_mdat = first_mdat_start > b.start
+      if delta != 0 && moov_before_mdat {
+        // moov 变长且在 mdat 之前：修正 stco/co64 的绝对偏移
+        let payload = slice_bytes(new_moov.exact_view(), 8, new_moov.length())
+        let fixed = fix_offsets_in_tree(
+          payload.exact_view(),
+          0,
+          payload.length(),
+          delta,
+        )
+        out.write_bytes(make_box("moov", fixed))
+      } else {
+        out.write_bytes(new_moov)
+      }
     } else {
       out.write_bytes(slice_bytes(data, b.start, b.start + 8 + b.length))
     }
   }
   if !found_moov {
     raise BadHeader(reason="MP4 文件缺少 moov 盒")
+  }
+  out.to_bytes()
+}
+
+///|
+/// 容器盒（可递归进入寻找 stco/co64）。
+fn is_container_box(kind : String) -> Bool {
+  kind == "moov" ||
+  kind == "trak" ||
+  kind == "mdia" ||
+  kind == "minf" ||
+  kind == "stbl"
+}
+
+///|
+/// 递归重建盒树，遇到 stco/co64 时把每个 chunk offset += delta。
+fn fix_offsets_in_tree(
+  data : BytesView,
+  start : Int32,
+  end : Int32,
+  delta : Int32,
+) -> Bytes raise TagError {
+  let boxes = list_boxes(data, start, end)
+  let out = @buffer.Buffer()
+  for b in boxes {
+    if b.kind == "stco" || b.kind == "co64" {
+      out.write_bytes(fix_stco_box(data, b, delta))
+    } else if is_container_box(b.kind) {
+      let inner = fix_offsets_in_tree(
+        data,
+        b.offset,
+        b.offset + b.length,
+        delta,
+      )
+      out.write_bytes(make_box(b.kind, inner))
+    } else {
+      out.write_bytes(slice_bytes(data, b.start, b.start + 8 + b.length))
+    }
+  }
+  out.to_bytes()
+}
+
+///|
+/// 修正单个 stco/co64 盒内的偏移条目。
+///
+/// 结构：size(4) + type(4) + version/flags(4) + entry_count(4) + entries。
+/// stco 每条 4 字节 BE u32，co64 每条 8 字节 BE u64。
+fn fix_stco_box(
+  data : BytesView,
+  b : Mp4Box,
+  delta : Int32,
+) -> Bytes raise TagError {
+  let raw = slice_bytes(data, b.start, b.start + 8 + b.length)
+  let view = raw.exact_view()
+  let entry_count = read_be(view, 12, 4)
+  let out = @buffer.Buffer()
+  // 复制盒头（size + type + version/flags + entry_count = 16 字节）
+  out.write_bytes(slice_bytes(view, 0, 16))
+  if b.kind == "stco" {
+    for i in 0..<entry_count {
+      let offset = read_be(view, 16 + i * 4, 4)
+      out.write_bytes(write_u32be(offset + delta))
+    }
+  } else {
+    for i in 0..<entry_count {
+      let offset = read_be64(view, 16 + i * 8)
+      out.write_bytes(write_be64(offset + Int64::from_int(delta)))
+    }
   }
   out.to_bytes()
 }

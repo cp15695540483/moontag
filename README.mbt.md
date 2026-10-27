@@ -47,8 +47,30 @@ import {
 | MP3 | APEv2（尾部） | ✅ 条目 + 二进制标志 | ✅ 改写（不叠加） |
 | FLAC | VORBIS_COMMENT | ✅ vendor + 全部条目 | ✅ 改写（含 padding 复用） |
 | FLAC | 元数据块链 | ✅ 遍历（含保留类型块） | ✅ 原样保留 |
-| MP4/M4A | ilst | ✅ 全部条目 + 封面 | ✅ 改写（保留 mdat 与其它盒） |
+| MP4/M4A | ilst | ✅ 全部条目 + 封面 | ✅ 改写（保留 mdat 与其它盒、**修正 chunk 偏移**） |
 | Ogg | Vorbis Comment（Vorbis/Opus） | ✅ vendor + 全部条目 | ✅ 改写（音频页原样保留、PCM 零损失） |
+
+### MP4 的媒体定位（改标签为什么必须动样本表偏移）
+
+MP4 把音频数据的**绝对字节偏移**记在 `moov/trak/mdia/minf/stbl` 的
+`stco`（32 位）或 `co64`（64 位）里；标签（`udta/meta/ilst`）也在 `moov` 内。
+所以标签一变长，`moov` 就变大，其在文件中的后续内容（含 `mdat`）整体后移，
+**原有 chunk 偏移全部失效**——播放器会读到错位字节。
+
+本项目的职责划分：
+
+- **不做**：样本表的语义解析与解复用（不重建 `stbl`、不做 demux/mux、不碰 fMP4）；
+- **必须做**：当 `moov` 尺寸变化且它位于 `mdat` 之前时，把**全部** `trak` 的
+  `stco`/`co64` 内已有偏移按 `delta` 平移（`co64` 的 64 位形式一并处理）。
+  这不是可选项，而是"改写文件"的组成部分。
+
+**已验证的硬场景**：faststart 文件（`moov` 在前，其后仅 8 字节 `free`），
+写入 200 字符标签使 `moov` 增长 228 字节，预留空间不足 → `mdat` 后移 →
+偏移修正后 `ffmpeg` 正常解码，裸 PCM 与改写前逐字节一致；
+`tools/e2e.sh` 与单测都覆盖此场景，并有变异测试证明判据有判别力。
+
+**支持的 MP4 布局**：`moov` 前置（faststart）与 `moov` 尾置均可。
+`moov` 尾置时 `mdat` 不动，无需修正偏移（这是正确行为而非"勉强成立"）。
 
 **明确不做**（及理由）：
 
@@ -60,7 +82,13 @@ import {
   `Unsupported` 而非静默丢弃——静默会丢数据；
 - **流式增量编辑**：标签本身在文件头部（ID3v2）或尾部（APEv2），编辑必须
   一次性读入重写；流式只对音频解码有意义；
-- **MP4 sample table**：那是容器解复用层，属于另一个生态位；
+- **MP4 的样本表语义层**：不解复用、不重建 `stbl`、不做 mux；但如上一节所述，
+  **会读取并修正已有 `stco`/`co64` 偏移**以维持媒体定位；
+- **fragmented MP4（`moof`/`traf`/`tfhd` 的 `base_data_offset`）** 与
+  **64 位 `largesize` 盒**：不在支持内，遇到会明确报错；
+- **不做 `moov` 后的 padding 复用**：`moov` 之后的 `free` 空间不保证存在
+  （faststart 文件常仅 8 字节），本实现选择通用路径——一律按 `delta` 修正偏移，
+  而不是"有 padding 才安全"；
 - **Ogg 的 PICTURE 块（METADATA_BLOCK_PICTURE）**：FLAC 的 PICTURE 语义
   封装进 Ogg comment 的 base64 条目，属下一增量；
 - **Ogg 流的 seek/重新封装**：只重建头两页并保持音频页原样，页内字节

@@ -31,7 +31,7 @@ bad() {
 }
 
 # 样本必须在仓库里
-for s in v24.mp3 v23.mp3 base.flac base.m4a cover.png test.ogg test.opus; do
+for s in v24.mp3 v23.mp3 base.flac base.m4a faststart.m4a cover.png test.ogg test.opus; do
   if [ ! -f "$SAMPLES/$s" ]; then
     echo "缺少测试样本 $SAMPLES/$s（用 tools/make_samples.sh 生成）"
     exit 1
@@ -90,6 +90,28 @@ cp "$SAMPLES/base.m4a" "$tmp/w.m4a"
 m4a_out=$("$FFMPEG" -i "$tmp/w.m4a" -f null - 2>&1)
 echo "$m4a_out" | grep -q "title.*新标题" && pass "ffmpeg 读回 M4A title" || bad "ffmpeg 读不到 M4A title"
 echo "$m4a_out" | grep -q "album.*新专辑" && pass "ffmpeg 读回 M4A album" || bad "ffmpeg 读不到 M4A album"
+
+# 硬场景：moov 前置（faststart）+ 标签增长超出预留空间（moov 后仅 8 字节 free）。
+# 此时 mdat 整体后移，必须同步修正 stco/co64 的绝对 chunk 偏移，
+# 否则播放器定位错乱（修复前实测 ffmpeg 报 "Error submitting packet to decoder"）。
+echo "== MP4 faststart（moov 前置）标签增长 =="
+cp "$SAMPLES/faststart.m4a" "$tmp/fs.m4a"
+"$MOON" run cmd/tag --target wasm-gc -- mp4 set "$tmp/fs.m4a" "©nam=Faststart New Title" \
+  "©ART=$(printf 'A%.0s' $(seq 1 200))" >/dev/null 2>&1
+# 音频必须仍可解码
+"$FFMPEG" -loglevel error -i "$SAMPLES/faststart.m4a" -f s16le "$tmp/fs_orig.pcm" -y 2>/dev/null
+if "$FFMPEG" -loglevel error -i "$tmp/fs.m4a" -f s16le "$tmp/fs_new.pcm" -y 2>/dev/null; then
+  pass "faststart 标签增长后 ffmpeg 仍能解码"
+else
+  bad "faststart 标签增长后音频解码失败（stco 偏移未修正）"
+fi
+if cmp -s "$tmp/fs_orig.pcm" "$tmp/fs_new.pcm"; then
+  pass "faststart 改写后 PCM 逐字节相同"
+else
+  bad "faststart 改写后音频数据错位"
+fi
+fast_out=$("$FFMPEG" -i "$tmp/fs.m4a" -f null - 2>&1)
+echo "$fast_out" | grep -q "title.*Faststart New Title" && pass "faststart 标签可读回" || bad "faststart 标签读不到"
 
 echo "== APEv2 读写（moontag 自读回） =="
 cp "$SAMPLES/v24.mp3" "$tmp/ape.mp3"
