@@ -55,6 +55,54 @@ else
   bad "音频数据被改动"
 fi
 
+echo "== ID3v2 帧级压缩（zlib：v2.4 DLI / v2.3 4 字节尺寸） =="
+# 压缩帧是规范内的合法帧头形态（id3v2.3.0 §3.3.1、id3v2.4.0-structure §4.1.2），
+# 夹具由 tools/make_cframe_fixtures.py 生成后提交，来源写在 tools/samples/README.md。
+for s in cframe_v24.mp3 cframe_v24_tit2.mp3 cframe_v24_txxx.mp3 cframe_v23.mp3 control_v24.mp3 control_v23.mp3; do
+  if [ ! -f "$SAMPLES/$s" ]; then
+    echo "缺少测试样本 $SAMPLES/$s（用 tools/make_cframe_fixtures.py 生成）"
+    exit 1
+  fi
+done
+cfshow() { "$MOON" run cmd/tag --target wasm-gc -- show "$1" 2>&1; }
+cfshow "$SAMPLES/cframe_v24.mp3" | grep -q "CompressedArtist-" &&
+  pass "v2.4 压缩帧（zlib + DLI）读出文本" || bad "v2.4 压缩帧读不出文本"
+cfshow "$SAMPLES/cframe_v23.mp3" | grep -q "CompressedArtist-" &&
+  pass "v2.3 压缩帧（4 字节解压后尺寸）读出文本" || bad "v2.3 压缩帧读不出文本"
+# 连坐判据：只有一个无关帧（TXXX）被压缩时，其余字段必须照常读出
+cfshow "$SAMPLES/cframe_v24_txxx.mp3" | grep -q "PlainTitle" &&
+  pass "被压缩的无关帧不影响其它字段" || bad "压缩帧连坐：其它字段丢失"
+# 对照组（同布局、不设压缩位）：证明差异确实来自压缩标志，而不是夹具本身
+cfshow "$SAMPLES/control_v24.mp3" | grep -q "CompressedArtist-" &&
+  pass "对照组（不设压缩位）读出同一字段" || bad "对照组读不出字段：夹具布局有问题"
+# 改写：压缩帧内容不能丢，新增字段要读得回，音频零损失
+cp "$SAMPLES/cframe_v24.mp3" "$tmp/cf24.mp3"
+cp "$SAMPLES/cframe_v23.mp3" "$tmp/cf23.mp3"
+"$MOON" run cmd/tag --target wasm-gc -- set "$tmp/cf24.mp3" "TCON=Rock" >/dev/null 2>&1
+"$MOON" run cmd/tag --target wasm-gc -- set "$tmp/cf23.mp3" "TCON=Rock" >/dev/null 2>&1
+cf_after=$(cfshow "$tmp/cf24.mp3")
+echo "$cf_after" | grep -q "CompressedArtist-" && pass "改写后 v2.4 压缩帧内容仍在" || bad "改写丢失 v2.4 压缩帧内容"
+echo "$cf_after" | grep -q "Rock" && pass "改写新增字段可读回" || bad "改写新增字段读不到"
+cfshow "$tmp/cf23.mp3" | grep -q "CompressedArtist-" &&
+  pass "改写后 v2.3 压缩帧内容仍在" || bad "改写丢失 v2.3 压缩帧内容"
+"$FFMPEG" -loglevel error -i "$SAMPLES/cframe_v24.mp3" -f s16le -ac 1 -ar 44100 "$tmp/cf_a.pcm" -y 2>/dev/null
+"$FFMPEG" -loglevel error -i "$tmp/cf24.mp3" -f s16le -ac 1 -ar 44100 "$tmp/cf_b.pcm" -y 2>/dev/null
+if cmp -s "$tmp/cf_a.pcm" "$tmp/cf_b.pcm"; then
+  pass "压缩帧改写后 PCM 逐字节相同"
+else
+  bad "压缩帧改写破坏了音频"
+fi
+# 与 ffmpeg 的能力对照：v2.4 双方都能读；v2.3 只有本库能读（ffmpeg 静默丢该帧）
+ff24=$("$FFMPEG" -i "$SAMPLES/cframe_v24.mp3" -f null - 2>&1)
+echo "$ff24" | grep -q "CompressedArtist-" &&
+  pass "ffmpeg 亦能读 v2.4 压缩帧（夹具正确性对照）" || bad "ffmpeg 读不到 v2.4 压缩帧：夹具可能不合规"
+ff23=$("$FFMPEG" -i "$SAMPLES/cframe_v23.mp3" -f null - 2>&1)
+if echo "$ff23" | grep -q "CompressedArtist-"; then
+  pass "ffmpeg 亦能读 v2.3 压缩帧"
+else
+  pass "ffmpeg 读不到 v2.3 压缩帧（本库读出：能力差异，非缺陷）"
+fi
+
 echo "== APIC 封面写入与提取 =="
 cp "$SAMPLES/v24.mp3" "$tmp/cover.mp3"
 "$MOON" run cmd/tag --target wasm-gc -- cover "$tmp/cover.mp3" "$SAMPLES/cover.png" >/dev/null 2>&1
