@@ -13,12 +13,17 @@
 pub struct Frame {
   /// 4 字符帧 ID（如 `TIT2`）。
   id : String
-  /// 帧载荷（已完成 unsynchronisation 还原）。
+  /// 帧载荷（已完成 unsynchronisation 还原与 zlib 解压）。
   data : Bytes
   /// 帧头第一字节（状态标志）。
   status_flags : Int32
   /// 帧头第二字节（格式标志）。
   format_flags : Int32
+  /// 分组标识字节（v2.3 `$20` / v2.4 `$40`）；无分组时为 `None`。
+  ///
+  /// 这个字节夹在帧头与载荷之间，读的时候必须跳过、写的时候必须补回，
+  /// 只跳过不补回会让读者把载荷首字节当成组号，整帧静默错位。
+  group : Int32?
 }
 
 ///|
@@ -142,74 +147,163 @@ fn parse_frames(
         available=body.length() - payload_start,
       )
     }
-    // 跳过帧内的附加头字段（分组字节 / 数据长度指示 / 加密方法），
-    // 其中加密与压缩明确不支持。
-    let extra = extra_header_len(id, major, status_flags, format_flags)
+    // 解析帧头的附加字段：分组字节要保留（写回时必须补回），
+    // 加密帧没有可用语义——规范把加密方法留给外部注册表，这里明确报不支持。
+    let compressed = if major == 4 {
+      (format_flags & 0x08) != 0
+    } else {
+      (format_flags & 0x80) != 0
+    }
+    let encrypted = if major == 4 {
+      (format_flags & 0x04) != 0
+    } else {
+      (format_flags & 0x40) != 0
+    }
+    if encrypted {
+      raise Unsupported(what="帧 \{id} 已加密")
+    }
+    let (extra, group_pos) = frame_extra_layout(major, format_flags)
     let data_start = payload_start + extra
     let data_end = payload_start + size
     if data_start > data_end {
       raise BadFrameHeader(reason="帧 \{id} 的附加头字段超出帧尺寸")
     }
+    let group = if group_pos >= 0 {
+      Some(body.at(payload_start + group_pos).to_int())
+    } else {
+      None
+    }
+    // 压缩帧的解压上限（与 TagLib 的 maxCompressedFrameOutputSize 同量级）。
+    // 音频文件是不可信输入：一个几百字节的帧可以声明成 GB 级输出，
+    // 没有上限就等于把内存交给文件里的数字。
+    let declared = if compressed {
+      let d = if major == 4 {
+        if (format_flags & 0x01) == 0 {
+          // 规范原文：压缩帧 MUST 带 Data Length Indicator，缺了就没有可信的
+          // 解压后尺寸可用，明确报错而不是猜。
+          raise BadFrameHeader(
+            reason="帧 \{id} 声明压缩但缺少 Data Length Indicator",
+          )
+        }
+        read_synchsafe32(
+          body,
+          payload_start + (if group_pos >= 0 { 1 } else { 0 }),
+        )
+      } else {
+        read_u32be(body, payload_start)
+      }
+      if d > MAX_COMPRESSED_FRAME_OUTPUT {
+        raise BadFrameData(
+          frame_id=id,
+          reason="声明的解压后尺寸 \{d} 超出上限 \{MAX_COMPRESSED_FRAME_OUTPUT}",
+        )
+      }
+      Some(d)
+    } else {
+      None
+    }
     let raw = body.exact_view(start=data_start, end=data_end)
     // v2.4：帧级 unsync（或标签级 unsync 表示所有帧都还原）
     let frame_unsync = major == 4 && (tag_unsync || (format_flags & 0x02) != 0)
-    let data = if frame_unsync {
+    let restored = if frame_unsync {
       unsynchronise(raw)
     } else {
       slice_bytes(body, data_start, data_end)
     }
-    out.push({ id, data, status_flags, format_flags, })
+    // unsync 还原在解压之前——顺序反了会让 zlib 流被"还原"坏掉。
+    let data = if compressed {
+      inflate_frame(id, restored, declared)
+    } else {
+      restored
+    }
+    out.push({ id, data, status_flags, format_flags, group, })
     pos = data_end
   }
   out
 }
 
 ///|
-/// 帧附加头字段的字节数；加密/压缩直接报不支持。
-fn extra_header_len(
-  id : String,
-  major : Int32,
-  status_flags : Int32,
-  format_flags : Int32,
-) -> Int32 raise TagError {
+/// 解析帧头的附加字段布局，返回 `(附加头字节数, 组号字节的相对偏移)`，
+/// 无分组时偏移为 `-1`。
+///
+/// 规范要求附加字段"按标志位出现的顺序"排列（id3v2.4.0-structure §4.1、
+/// id3v2.3.0 §3.3.1），两个版本恰好相反：
+///   • v2.3 `%ijk00000` → [4 字节解压后尺寸][1 字节加密方法][1 字节组号]；
+///   • v2.4 `%0h00kmnp` → [1 字节组号][1 字节加密方法][4 字节 DLI]。
+/// 抄错顺序会把载荷整体错位，是这里唯一值得显式分支的地方。
+fn frame_extra_layout(major : Int32, format_flags : Int32) -> (Int32, Int32) {
   if major == 3 {
-    // %ijk00000：i 压缩 $80、j 加密 $40、k 分组 $20
-    let compressed = (format_flags & 0x80) != 0
-    let encrypted = (format_flags & 0x40) != 0
+    let mut len = 0
+    if (format_flags & 0x80) != 0 {
+      len += 4
+    }
+    if (format_flags & 0x40) != 0 {
+      len += 1
+    }
     let grouped = (format_flags & 0x20) != 0
-    if compressed {
-      raise Unsupported(what="帧 \{id} 使用了 zlib 压缩")
-    }
-    if encrypted {
-      raise Unsupported(what="帧 \{id} 已加密")
-    }
+    let group_pos = if grouped { len } else { -1 }
     if grouped {
-      1
-    } else {
-      0
+      len += 1
     }
+    (len, group_pos)
   } else {
-    // %0h00kmnp：h 分组 $40、k 压缩 $08、m 加密 $04、p 数据长度指示 $01
     let grouped = (format_flags & 0x40) != 0
-    let compressed = (format_flags & 0x08) != 0
-    let encrypted = (format_flags & 0x04) != 0
-    let has_dli = (format_flags & 0x01) != 0
-    if compressed {
-      raise Unsupported(what="帧 \{id} 使用了 zlib 压缩")
+    let group_pos = if grouped { 0 } else { -1 }
+    let mut len = if grouped { 1 } else { 0 }
+    if (format_flags & 0x04) != 0 {
+      len += 1
     }
-    if encrypted {
-      raise Unsupported(what="帧 \{id} 已加密")
+    if (format_flags & 0x01) != 0 {
+      len += 4
     }
-    let mut n = 0
-    if grouped {
-      n += 1
-    }
-    if has_dli {
-      n += 4
-    }
-    let _ = status_flags
-    n
+    (len, group_pos)
   }
+}
+
+///|
+/// 单个压缩帧允许解压出的最大字节数（64 MiB）。
+///
+/// 真实标签帧远小于这个数，而恶意文件可以只花几百字节就声明 GB 级输出。
+/// **注意这个上限只约束帧头里声明的尺寸**：依赖的 zlib 解码器不提供输出侧
+/// 字节上限，也没有可靠的"边喂边查"路径（实测其流式 `write` 对单块小流
+/// 要等 `finish` 才写进 sink），因此对"声明值撒谎"的文件只能在解压完成后
+/// 用长度一致性校验拒收。这一残余风险写在 README 的"明确不做"里。
+const MAX_COMPRESSED_FRAME_OUTPUT : Int32 = 0x04000000
+
+///|
+/// 解压 zlib 压缩的帧载荷。
+///
+/// 压缩算法由规范点名（v2.3/v2.4 都指向 zlib / RFC 1950），因此这里不是
+/// "猜格式"：直接按 zlib 容器解。解压失败报结构化的 `BadFrameData`，
+/// 不能把半个标签交出去。
+///
+/// `declared` 是帧头里声明的解压后尺寸（v2.3 的 4 字节、v2.4 的 DLI）。
+/// 解压结果与声明不符时同样报错：规范要求这个字段就是解压后长度，
+/// 对不上说明数据不可信。
+fn inflate_frame(
+  id : String,
+  data : Bytes,
+  declared : Int32?,
+) -> Bytes raise TagError {
+  let (out, _adler) = @moon_yazi.decompress(data, @moon_yazi.Format::Zlib) catch {
+    e =>
+      raise BadFrameData(
+        frame_id=id,
+        reason="zlib 解压失败：\{e.to_string()}",
+      )
+  }
+  let plain = Bytes::from_array(out)
+  match declared {
+    Some(d) =>
+      if plain.length() != d {
+        raise BadFrameData(
+          frame_id=id,
+          reason="解压后长度 \{plain.length()} 与声明的 \{d} 不一致",
+        )
+      }
+    None => ()
+  }
+  plain
 }
 
 ///|

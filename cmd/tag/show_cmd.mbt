@@ -8,12 +8,14 @@ fn cmd_show_unified(path : String) -> Unit {
   let data = @fs.read_file_to_bytes(path) catch {
     _ => {
       println("读取失败：\{path}")
+      @sys.exit(1)
       return
     }
   }
   let info = @moontag.read_track_info(data.exact_view()) catch {
     e => {
       println("解析失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }

@@ -151,6 +151,7 @@ pub struct Frame {
   data : Bytes
   status_flags : Int
   format_flags : Int
+  group : Int?
 }
 pub fn Frame::as_text(Self) -> String? raise TagError
 

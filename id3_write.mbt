@@ -54,22 +54,20 @@ pub struct ExistingTag {
 
 ///|
 /// 定位文件开头的 ID3 标签；没有标签不算错误。
-fn locate_tag(data : BytesView) -> ExistingTag {
+///
+/// "没有标签"与"有标签但读不出来"必须分开：后者若当成前者处理，写入会在原
+/// 文件前面**再插一个新标签**，整个原文件（含旧标签）被当成音频保留下来——
+/// 产出双标签，而调用方看到的是"写入成功"。因此这里只对"连 ID3 头都没有"
+/// 返回 `None`，标签存在时解析错误一律抛出（与读取侧 `read_mp3_info` 同策略）。
+fn locate_tag(data : BytesView) -> ExistingTag raise TagError {
   if data.length() < 10 ||
     data.at(0) != b'I' ||
     data.at(1) != b'D' ||
     data.at(2) != b'3' {
     return { tag: None, size: 0, }
   }
-  let major = data.at(3).to_int()
-  if major != 3 && major != 4 {
-    return { tag: None, size: 0, }
-  }
-  let parse_result : Id3Tag? = Some(parse(data)) catch { _ => None }
-  match parse_result {
-    None => { tag: None, size: 0, }
-    Some(t) => { tag: Some(t), size: t.total_size, }
-  }
+  let tag = parse(data)
+  { tag: Some(tag), size: tag.total_size, }
 }
 
 ///|
@@ -183,16 +181,43 @@ fn build_frame(
 ///|
 /// 把已存在的帧（来自解析结果）重新序列化。
 ///
-/// 解析时已经还原过 unsynchronisation，所以这里按"未同步"形态写回，
-/// 并清掉帧头里的 unsync 位——否则读者会对同一份数据再还原一次。
+/// 解析阶段已经做了三件事：还原 unsynchronisation、解压 zlib、剥掉附加头字段。
+/// 因此写回时必须逐项抵消，少做一件就会产出"能解析但内容错位"的标签：
+///   • 清 unsync 位与压缩位，否则读者会对同一份数据再还原、再解压一次；
+///   • 分组字节原样补回，否则读者会把载荷首字节当成组号，整帧错位一字节；
+///   • v2.4 的 DLI 保留（它是独立标志位），但值按新载荷长度重算。
 fn reserialize_frame(major : Int32, f : Frame) -> Bytes {
-  let format_flags = if major == 4 {
-    // 清 bit1（unsync）；其余格式位（分组/压缩/加密）在读取阶段已拒绝
-    f.format_flags & 0xFD
+  let extra = @buffer.Buffer()
+  let mut format_flags = f.format_flags
+  if major == 4 {
+    // 清 $02 unsync、$08 压缩；分组 $40 与 DLI $01 保留
+    format_flags = format_flags & 0xFD & 0xF7
+    match f.group {
+      Some(g) => extra.write_byte(g.to_byte())
+      None => ()
+    }
+    if (format_flags & 0x01) != 0 {
+      // DLI 的语义：所有 format flags 归零时应写的 Frame length
+      write_synchsafe32(extra, f.data.length())
+    }
   } else {
-    f.format_flags
+    // v2.3：清 $80 压缩（紧随其后的 4 字节"解压后尺寸"一并丢弃）；
+    // 分组 $20 保留并补回组号字节。
+    format_flags = format_flags & 0x7F
+    match f.group {
+      Some(g) => extra.write_byte(g.to_byte())
+      None => ()
+    }
   }
-  build_frame(major, f.id, format_flags, f.data)
+  build_frame(major, f.id, format_flags, extra.to_bytes().add(f.data))
+}
+
+///|
+/// 写 4 字节 synchsafe u32（每字节只放低 7 位）。
+fn write_synchsafe32(buf : @buffer.Buffer, v : Int32) -> Unit {
+  for shift in [21, 14, 7, 0] {
+    buf.write_byte(((v >> shift) & 0x7F).to_byte())
+  }
 }
 
 ///|
@@ -292,7 +317,10 @@ pub fn set_picture(
 
 ///|
 /// 决定要写入的版本：文件有标签就沿用，否则用 options 指定的默认版本。
-fn resolve_major(data : BytesView, options : WriteOptions) -> Int32 {
+fn resolve_major(
+  data : BytesView,
+  options : WriteOptions,
+) -> Int32 raise TagError {
   match locate_tag(data).tag {
     Some(t) => t.major
     None => options.default_major

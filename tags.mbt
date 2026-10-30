@@ -166,8 +166,25 @@ fn read_mp4_info(data : BytesView) -> TrackInfo raise TagError {
 /// 现实中两类文件都存在——只有 ID3v2 的、只有 APEv2 的（ape 生态）、
 /// 以及两者并存的（转换工具留下的双标签）。只看 ID3v2 会漏掉后两种。
 fn read_mp3_info(data : BytesView) -> TrackInfo raise TagError {
-  let id3 : Id3Tag? = Some(parse(data)) catch { _ => None }
   let ape : ApeTag? = parse_ape(data) catch { _ => None }
+  // "没有标签"与"有标签但读不出来"必须分开：
+  //   • 连 ID3v2 标签头都不存在（文件太短或无 "ID3" 魔数）→ 正常的无标签文件；
+  //   • 标签头存在、内部结构却读不出来（压缩帧、损坏帧、超版本）→ 必须抛出。
+  // 后者一旦被吞掉，"有标签但读不出"就会被伪装成"这个文件没有标签"，
+  // 调用方（含 CLI）既拿不到字段，也看不到失败原因。
+  let has_id3_header = data.length() >= 10 &&
+    data.at(0) == b'I' &&
+    data.at(1) == b'D' &&
+    data.at(2) == b'3'
+  let id3 : Id3Tag? = if has_id3_header {
+    // 有 APEv2 兜底时按"双标签文件"继续（ID3 侧坏掉仍有字段可用）
+    match ape {
+      Some(_) => Some(parse(data)) catch { _ => None }
+      None => Some(parse(data))
+    }
+  } else {
+    None
+  }
   if id3 is None && ape is None {
     return empty_info(Mp3)
   }

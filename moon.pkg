@@ -2,6 +2,7 @@ import {
   "moonbitlang/core/buffer",
   "moonbitlang/core/encoding/utf16",
   "moonbitlang/core/encoding/utf8",
+  "Milky2018/moon_yazi",
 }
 
 import {

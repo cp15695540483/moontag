@@ -19,7 +19,10 @@ fn cmd_show(data : Bytes) -> Unit {
       }
     }
   } catch {
-    e => println("解析失败: \{e.message()}")
+    e => {
+      println("解析失败: \{e.message()}")
+      @sys.exit(1)
+    }
   }
 }
 
@@ -58,12 +61,14 @@ fn cmd_set(path : String, specs : Array[String]) -> Unit {
   ) catch {
     err => {
       println("写入失败: \{err.message()}")
+      @sys.exit(1)
       return
     }
   }
   @fs.write_bytes_to_file(path, out) catch {
     _ => {
       println("保存失败：\{path}")
+      @sys.exit(1)
       return
     }
   }

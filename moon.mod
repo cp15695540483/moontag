@@ -1,6 +1,6 @@
 name = "cp15695540483/moontag"
 
-version = "0.1.1"
+version = "0.2.0"
 
 readme = "README.mbt.md"
 
@@ -25,4 +25,5 @@ preferred_target = "wasm-gc"
 
 import {
   "moonbitlang/x@0.5.5",
+  "Milky2018/moon_yazi@0.1.3",
 }
