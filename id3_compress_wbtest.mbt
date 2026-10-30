@@ -467,6 +467,50 @@ test "分组 + DLI 同时存在（v2.4 $41）：组号在前、DLI 在后的规�
 }
 
 ///|
+test "解压上限是硬的：声明值比实际小会在解压过程中被挡住" {
+  // 32 KB 高度可压缩数据、声明值只写 1 KiB：固定缓冲只有 1 KiB，
+  // 解码器越界即抛（实测在 write 阶段就抛），不会先吃满内存再报错。
+  let raw = @buffer.Buffer()
+  for _ in 0..<8192 {
+    raw.write_bytes(Bytes::from_array([0x41, 0x41, 0x41, 0x41]))
+  }
+  let plain = raw.to_bytes()
+  let zlib = tb_zlib(plain)
+  let lying = @buffer.Buffer()
+  tb_put_synchsafe(lying, 1024)
+  lying.write_bytes(zlib)
+  let data = tb_tag(4, 0, [tb_frame(4, "TIT2", 0x09, lying.to_bytes())], 0)
+  let mut seen = false
+  try {
+    let _ = parse(data.exact_view())
+  } catch {
+    BadFrameData(reason~, ..) => {
+      @test.assert_eq(
+        reason.has_prefix(
+          "zlib 解压失败或输出超出声明的 1024 字节",
+        ),
+        true,
+      )
+      seen = true
+    }
+    _ => abort("错误类型应为 BadFrameData")
+  }
+  @test.assert_eq(seen, true)
+  // 对照：声明值正确时同一份数据正常解出
+  let honest = @buffer.Buffer()
+  tb_put_synchsafe(honest, plain.length())
+  honest.write_bytes(zlib)
+  let tag = parse(
+    tb_tag(4, 0, [tb_frame(4, "TIT2", 0x09, honest.to_bytes())], 0).exact_view(),
+  )
+  let f = match tag.frame("TIT2") {
+    Some(f) => f
+    None => abort("TIT2 丢失")
+  }
+  @test.assert_eq(f.data.length(), plain.length())
+}
+
+///|
 test "损坏的 zlib 流报结构化错误，不 panic、也不吞掉" {
   let bad = Bytes::from_array([
     0x78, 0x9C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

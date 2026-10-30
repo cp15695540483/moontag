@@ -263,47 +263,68 @@ fn frame_extra_layout(major : Int32, format_flags : Int32) -> (Int32, Int32) {
 ///|
 /// 单个压缩帧允许解压出的最大字节数（64 MiB）。
 ///
-/// 真实标签帧远小于这个数，而恶意文件可以只花几百字节就声明 GB 级输出。
-/// **注意这个上限只约束帧头里声明的尺寸**：依赖的 zlib 解码器不提供输出侧
-/// 字节上限，也没有可靠的"边喂边查"路径（实测其流式 `write` 对单块小流
-/// 要等 `finish` 才写进 sink），因此对"声明值撒谎"的文件只能在解压完成后
-/// 用长度一致性校验拒收。这一残余风险写在 README 的"明确不做"里。
+/// 压缩帧必须声明解压后尺寸（v2.3 的 4 字节 / v2.4 的 DLI），这个常量给声明值
+/// 本身设上限，避免"几百字节的帧声明 GB 级输出"就把内存交出去。
 const MAX_COMPRESSED_FRAME_OUTPUT : Int32 = 0x04000000
 
 ///|
 /// 解压 zlib 压缩的帧载荷。
 ///
 /// 压缩算法由规范点名（v2.3/v2.4 都指向 zlib / RFC 1950），因此这里不是
-/// "猜格式"：直接按 zlib 容器解。解压失败报结构化的 `BadFrameData`，
-/// 不能把半个标签交出去。
+/// "猜格式"：直接按 zlib 容器解。
 ///
-/// `declared` 是帧头里声明的解压后尺寸（v2.3 的 4 字节、v2.4 的 DLI）。
-/// 解压结果与声明不符时同样报错：规范要求这个字段就是解压后长度，
-/// 对不上说明数据不可信。
+/// **输出上限是硬的**：按声明尺寸预置一块固定缓冲交给解码器
+/// （`Decoder::stream_into_buf` 越界即抛 `Overflow`，实测在 `write` 阶段就抛），
+/// 因此解压产出的内存上界 = 声明尺寸 ≤ `MAX_COMPRESSED_FRAME_OUTPUT`。
+/// 这样"声明值撒谎"的文件不会先吃满内存再被拒。
+///
+/// `declared` 是帧头里声明的解压后尺寸。解压结果与声明不符时同样报错：
+/// 规范要求这个字段就是解压后长度，对不上说明数据不可信。
 fn inflate_frame(
   id : String,
   data : Bytes,
   declared : Int32?,
 ) -> Bytes raise TagError {
-  let (out, _adler) = @moon_yazi.decompress(data, @moon_yazi.Format::Zlib) catch {
+  // 压缩帧一定有声明尺寸（缺失已在解析处报 `BadFrameHeader`）；这里仍防御一次。
+  let cap = match declared {
+    Some(d) => d
+    None =>
+      raise BadFrameData(
+        frame_id=id,
+        reason="压缩帧缺少解压后尺寸声明，无法限定输出上限",
+      )
+  }
+  if cap <= 0 {
+    raise BadFrameData(
+      frame_id=id,
+      reason="声明的解压后尺寸 \{cap} 非法",
+    )
+  }
+  let buf : Array[Byte] = Array::make(cap, b'\x00')
+  let decoder = @moon_yazi.Decoder()
+  decoder.set_format(@moon_yazi.Format::Zlib)
+  let stream = decoder.stream_into_buf(buf)
+  stream.write(data) catch {
     e =>
       raise BadFrameData(
         frame_id=id,
-        reason="zlib 解压失败：\{e.to_string()}",
+        reason="zlib 解压失败或输出超出声明的 \{cap} 字节：\{e.to_string()}",
       )
   }
-  let plain = Bytes::from_array(out)
-  match declared {
-    Some(d) =>
-      if plain.length() != d {
-        raise BadFrameData(
-          frame_id=id,
-          reason="解压后长度 \{plain.length()} 与声明的 \{d} 不一致",
-        )
-      }
-    None => ()
+  let (count, _checksum) = stream.finish() catch {
+    e =>
+      raise BadFrameData(
+        frame_id=id,
+        reason="zlib 解压失败或输出超出声明的 \{cap} 字节：\{e.to_string()}",
+      )
   }
-  plain
+  if count.to_int() != cap {
+    raise BadFrameData(
+      frame_id=id,
+      reason="解压后长度 \{count.to_int()} 与声明的 \{cap} 不一致",
+    )
+  }
+  Bytes::from_array(buf)
 }
 
 ///|
