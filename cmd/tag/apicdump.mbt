@@ -10,18 +10,21 @@ fn cmd_apic(src : String, dst : String) -> Unit {
   let data = @fs.read_file_to_bytes(src) catch {
     _ => {
       println("读取失败：\{src}")
+      @sys.exit(1)
       return
     }
   }
   let tag = @moontag.parse(data.exact_view()) catch {
     e => {
       println("解析失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }
   let pic_opt = tag.picture() catch {
     e => {
       println("图片解析失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }
@@ -31,6 +34,7 @@ fn cmd_apic(src : String, dst : String) -> Unit {
       @fs.write_bytes_to_file(dst, pic.data) catch {
         _ => {
           println("写入失败：\{dst}")
+          @sys.exit(1)
           return
         }
       }
@@ -47,18 +51,21 @@ fn cmd_apics(src : String) -> Unit {
   let data = @fs.read_file_to_bytes(src) catch {
     _ => {
       println("读取失败：\{src}")
+      @sys.exit(1)
       return
     }
   }
   let tag = @moontag.parse(data.exact_view()) catch {
     e => {
       println("解析失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }
   let pics = tag.pictures() catch {
     e => {
       println("图片解析失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }
@@ -78,12 +85,14 @@ fn cmd_cover(src : String, image : String) -> Unit {
   let audio = @fs.read_file_to_bytes(src) catch {
     _ => {
       println("读取失败：\{src}")
+      @sys.exit(1)
       return
     }
   }
   let img = @fs.read_file_to_bytes(image) catch {
     _ => {
       println("读取图片失败：\{image}")
+      @sys.exit(1)
       return
     }
   }
@@ -96,12 +105,14 @@ fn cmd_cover(src : String, image : String) -> Unit {
   ) catch {
     e => {
       println("写入失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }
   @fs.write_bytes_to_file(src, out) catch {
     _ => {
       println("保存失败：\{src}")
+      @sys.exit(1)
       return
     }
   }

@@ -7,12 +7,14 @@ fn cmd_ape_show(path : String) -> Unit {
   let data = @fs.read_file_to_bytes(path) catch {
     _ => {
       println("读取失败：\{path}")
+      @sys.exit(1)
       return
     }
   }
   let tag = @moontag.parse_ape(data.exact_view()) catch {
     e => {
       println("解析失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }
@@ -39,12 +41,14 @@ fn cmd_ape_set(path : String, specs : Array[String]) -> Unit {
   let data = @fs.read_file_to_bytes(path) catch {
     _ => {
       println("读取失败：\{path}")
+      @sys.exit(1)
       return
     }
   }
   let existing = @moontag.parse_ape(data.exact_view()) catch {
     e => {
       println("读取失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }
@@ -56,12 +60,14 @@ fn cmd_ape_set(path : String, specs : Array[String]) -> Unit {
     match spec.split_once("=") {
       None => {
         println("参数格式错误：\{spec}（应为 KEY=value）")
+        @sys.exit(1)
         return
       }
       Some((k, v)) =>
         tag = tag.set(k.to_owned(), @utf8.encode(v)) catch {
           e => {
             println("设置失败: \{e.message()}")
+            @sys.exit(1)
             return
           }
         }
@@ -70,12 +76,14 @@ fn cmd_ape_set(path : String, specs : Array[String]) -> Unit {
   let out = @moontag.set_ape_tag(data.exact_view(), tag) catch {
     e => {
       println("写入失败: \{e.message()}")
+      @sys.exit(1)
       return
     }
   }
   @fs.write_bytes_to_file(path, out) catch {
     _ => {
       println("保存失败：\{path}")
+      @sys.exit(1)
       return
     }
   }

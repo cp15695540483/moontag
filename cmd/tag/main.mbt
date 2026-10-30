@@ -44,6 +44,7 @@ fn cmd_set(path : String, specs : Array[String]) -> Unit {
       Some(f) => fields.push(f)
       None => {
         println("参数格式错误：\{s}（应为 ID=value）")
+        @sys.exit(1)
         return
       }
     }
@@ -51,6 +52,7 @@ fn cmd_set(path : String, specs : Array[String]) -> Unit {
   let data = @fs.read_file_to_bytes(path) catch {
     _ => {
       println("读取失败：\{path}")
+      @sys.exit(1)
       return
     }
   }
@@ -98,6 +100,7 @@ fn main {
     println("  moon run cmd/tag -- apic  <file> <out-image>    提取封面")
     println("  moon run cmd/tag -- apics <file>                列出封面")
     println("  moon run cmd/tag -- cover <file> <image>        嵌入封面")
+    @sys.exit(1)
     return
   }
   let sub = args[base]
@@ -107,6 +110,7 @@ fn main {
     if base + 2 >= args.length() {
       println("用法: moon run cmd/tag -- \{sub} show <file>")
       println("      moon run cmd/tag -- \{sub} set  <file> KEY=value ...")
+      @sys.exit(1)
       return
     }
     let action = args[base + 1]
@@ -164,6 +168,7 @@ fn main {
       let data = @fs.read_file_to_bytes(path) catch {
         _ => {
           println("读取失败：\{path}")
+          @sys.exit(1)
           return
         }
       }
@@ -177,6 +182,7 @@ fn main {
       let data = @fs.read_file_to_bytes(path) catch {
         _ => {
           println("读取失败：\{path}")
+          @sys.exit(1)
           return
         }
       }
