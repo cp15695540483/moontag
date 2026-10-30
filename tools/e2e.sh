@@ -198,6 +198,21 @@ fi
 
 # 统一视图必须覆盖五种标签场景（MP3/FLAC/M4A/Ogg Vorbis/Ogg Opus），
 # 且 MP3 的标签来源要能回退到 APEv2。
+echo "== CLI 失败退出码 =="
+# 失败只打印、退出码仍为 0，会让脚本与 CI 把"没做成"当成成功。
+if "$MOON" run cmd/tag --target wasm-gc -- show "$tmp/definitely-missing.mp3" \
+  >/dev/null 2>&1; then
+  bad "show 对不存在的文件返回成功（退出码应为非 0）"
+else
+  pass "show 对不存在的文件退出码非 0"
+fi
+if "$MOON" run cmd/tag --target wasm-gc -- cover "$SAMPLES/v24.mp3" "$tmp/missing.png" \
+  >/dev/null 2>&1; then
+  bad "cover 读不到图片时返回成功（退出码应为非 0）"
+else
+  pass "cover 读不到图片时退出码非 0"
+fi
+
 echo "== 统一视图覆盖范围 =="
 uv() { "$MOON" run cmd/tag --target wasm-gc -- show "$1" 2>&1; }
 uv "$SAMPLES/v24.mp3"      | grep -q "MP3 / ID3v2"           && pass "统一视图识别 MP3"      || bad "统一视图不识别 MP3"
