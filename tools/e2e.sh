@@ -196,6 +196,39 @@ else
   bad "Ogg 音频被破坏"
 fi
 
+echo "== Ogg 封面（METADATA_BLOCK_PICTURE） =="
+# Ogg 的封面不是二进制帧，而是 Vorbis Comment 里一条 Base64 的 FLAC PICTURE 载荷。
+# 验证：写入走对路径 → 统一视图认得出 → 提取回来与原 PNG 逐字节一致 → 音频没动。
+cp "$SAMPLES/test.ogg" "$tmp/oc.ogg"
+oc_write=$("$MOON" run cmd/tag --target wasm-gc -- cover "$tmp/oc.ogg" "$SAMPLES/cover.png" 2>&1)
+echo "$oc_write" | grep -q "METADATA_BLOCK_PICTURE" &&
+  pass "Ogg 封面写入走 METADATA_BLOCK_PICTURE" || bad "Ogg 封面写入路径不对"
+oc_show=$("$MOON" run cmd/tag --target wasm-gc -- show "$tmp/oc.ogg" 2>&1)
+echo "$oc_show" | grep -q "封面: 有" &&
+  pass "Ogg 封面写入后统一视图显示「有」" || bad "Ogg 封面写入后统一视图仍显示无封面"
+"$MOON" run cmd/tag --target wasm-gc -- apic "$tmp/oc.ogg" "$tmp/oc.png" >/dev/null 2>&1
+if cmp -s "$SAMPLES/cover.png" "$tmp/oc.png"; then
+  pass "Ogg 封面提取与原 PNG 逐字节相同"
+else
+  bad "Ogg 封面提取与原 PNG 不一致"
+fi
+"$FFMPEG" -loglevel error -i "$SAMPLES/test.ogg" -f s16le -ac 1 -ar 44100 "$tmp/oc1.pcm" -y 2>/dev/null
+"$FFMPEG" -loglevel error -i "$tmp/oc.ogg" -f s16le -ac 1 -ar 44100 "$tmp/oc2.pcm" -y 2>/dev/null
+if cmp -s "$tmp/oc1.pcm" "$tmp/oc2.pcm"; then
+  pass "Ogg 写封面后 PCM 逐字节相同"
+else
+  bad "Ogg 写封面破坏了音频"
+fi
+# Opus 走同一条 comment 路径，单独跑一遍（OpusTags 没有 setup packet）
+cp "$SAMPLES/test.opus" "$tmp/oc.opus"
+"$MOON" run cmd/tag --target wasm-gc -- cover "$tmp/oc.opus" "$SAMPLES/cover.png" >/dev/null 2>&1
+"$MOON" run cmd/tag --target wasm-gc -- apic "$tmp/oc.opus" "$tmp/ocopus.png" >/dev/null 2>&1
+if cmp -s "$SAMPLES/cover.png" "$tmp/ocopus.png"; then
+  pass "Ogg Opus 封面往返一致"
+else
+  bad "Ogg Opus 封面往返不一致"
+fi
+
 # 统一视图必须覆盖五种标签场景（MP3/FLAC/M4A/Ogg Vorbis/Ogg Opus），
 # 且 MP3 的标签来源要能回退到 APEv2。
 echo "== CLI 失败退出码 =="

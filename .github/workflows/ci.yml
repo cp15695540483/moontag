@@ -46,6 +46,11 @@ jobs:
       - name: 测试（js 后端）
         run: moon test --target js
 
+      # 严格口径：测试代码里的警告也算失败。
+      # `check --deny-warn` 只覆盖库代码，测试文件是独立编译单元。
+      - name: 测试（警告即失败）
+        run: moon test --target wasm-gc --deny-warn
+
       # 验收要求「提供可以实际运行的示例」：这里真的把示例跑一遍，
       # 而不是只在 README 里写它能跑。
       - name: 可运行示例
