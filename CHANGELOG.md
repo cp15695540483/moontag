@@ -13,6 +13,9 @@
   （MP3 → ID3v2 APIC，Ogg → Vorbis Comment 的 METADATA_BLOCK_PICTURE）。
   统一视图对 Ogg 与 FLAC 的 `has_cover` 从此可判。单测 132 → 140，e2e 37 → 42。
 - CI 新增「测试（警告即失败）」步骤：`moon test --target wasm-gc --deny-warn`。
+- **更正 `docs/demo.mp4` 的描述**：该视频由 AI 视频工具生成，是流程示意渲染而非终端录屏。
+  `docs/README.md` 与 0.1.1 条目此前写作「终端实录渲染」「完整读写流程实录」，属不实描述，
+  已按实际情况改正。真实可复现的证据仍是 `tools/e2e.sh`（CI 每次构建执行，42 项断言）。
 
 ## 0.2.0（2026-10-31）
 
@@ -40,7 +43,7 @@ ID3v2 帧级压缩与帧头标志位，这是本次修复的核心增量。
   `Error submitting packet to decoder`）。
 - 统一视图覆盖 Ogg Vorbis/Opus 与 APEv2（MP3 缺失字段回退到尾部 APEv2）；fMP4 写入显式报
   `Unsupported`，不静默损坏。
-- 添加演示视频 `docs/demo.mp4`（完整读写流程实录）。
+- 添加演示视频 `docs/demo.mp4`（约 1 分钟；**AI 生成的流程示意渲染，非终端录屏**）。
 
 ## 0.1.0（2026-10-23）
 
