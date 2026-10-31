@@ -158,6 +158,24 @@ fn try_picture_from_base64(value : String) -> Picture? {
 }
 
 ///|
+/// 从 FLAC 文件取封面（原生 PICTURE 元数据块，块类型 6）。
+///
+/// 与 comment 里的 `METADATA_BLOCK_PICTURE` 是两套并存的机制：FLAC 原生用块，
+/// Ogg 只能用 comment。这里取第一个 PICTURE 块；没有块返回 `None`。
+/// 注意块载荷是**不带块头**的 PICTURE 结构，所以直接喂给同一套解析器。
+pub fn flac_picture(data : BytesView) -> Picture? raise TagError {
+  let meta = parse_meta(data)
+  let block = match meta.block(Picture) {
+    None => return None
+    Some(b) => b
+  }
+  let payload = slice_bytes(data, block.offset, block.offset + block.length)
+  Some(parse_flac_picture(payload.exact_view())) catch {
+    _ => None
+  }
+}
+
+///|
 /// 从 Vorbis Comment 取封面（Ogg 与 FLAC 的 comment 路径共用）。
 ///
 /// 取第一张能解析出来的 `METADATA_BLOCK_PICTURE`；条目存在但解不出来的，

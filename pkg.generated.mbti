@@ -24,6 +24,8 @@ pub fn field(String, String) -> TagField
 
 pub fn find_ilst(BytesView) -> Mp4Box? raise TagError
 
+pub fn flac_picture(BytesView) -> Picture? raise TagError
+
 pub fn make_page(Int, Int, Int, Int64, Bytes) -> Bytes
 
 pub fn make_page_multi(Int, Int, Int, Int64, Array[Bytes]) -> Bytes

@@ -3,11 +3,12 @@
 // 封面相关的调试/验证用子命令：把图片数据原样写到文件，
 // 便于与原始 PNG/JPEG 做 SHA-256 比对。
 //
-// 两种容器的封面机制不同，这里按魔数分派：
-//   MP3 → ID3v2 的 APIC 帧（二进制帧）
-//   Ogg → Vorbis Comment 的 METADATA_BLOCK_PICTURE（Base64 文本）
+// 各容器的封面机制不同，这里按魔数分派：
+//   MP3  → ID3v2 的 APIC 帧（二进制帧）
+//   Ogg  → Vorbis Comment 的 METADATA_BLOCK_PICTURE（Base64 文本）
+//   FLAC → 原生 PICTURE 元数据块（块类型 6）
 //
-// 用法：moon run cmd/tag -- apic <mp3|ogg> <out-image>
+// 用法：moon run cmd/tag -- apic <mp3|ogg|flac> <out-image>
 
 ///|
 fn cmd_apic(src : String, dst : String) -> Unit {
@@ -22,6 +23,7 @@ fn cmd_apic(src : String, dst : String) -> Unit {
   let pic_opt : @moontag.Picture? = match format {
     @moontag.Mp3 => mp3_picture(data)
     @moontag.Ogg => ogg_picture(data)
+    @moontag.Flac => flac_cover(data)
     _ => None
   }
   match pic_opt {
@@ -117,6 +119,14 @@ fn mp3_picture(data : Bytes) -> @moontag.Picture? {
 }
 
 ///|
+/// 从 FLAC 原生 PICTURE 元数据块取封面（块类型 6，不是 comment 里的那个键）。
+fn flac_cover(data : Bytes) -> @moontag.Picture? {
+  @moontag.flac_picture(data.exact_view()) catch {
+    _ => None
+  }
+}
+
+///|
 /// 把一张图片写进文件：MP3 走 ID3v2 的 APIC，Ogg 走 Vorbis Comment 的
 /// `METADATA_BLOCK_PICTURE`（Base64 的 FLAC PICTURE 载荷）。
 ///
@@ -144,7 +154,9 @@ fn cmd_cover(src : String, image : String) -> Unit {
     @moontag.Mp3 => "ID3v2 APIC"
     @moontag.Ogg => "Vorbis METADATA_BLOCK_PICTURE"
     _ => {
-      println("封面写入支持 MP3 / Ogg，\{format.name()} 暂不支持")
+      println(
+        "封面写入支持 MP3（APIC）/ Ogg（METADATA_BLOCK_PICTURE）；\{format.name()} 暂不支持写入",
+      )
       @sys.exit(1)
       return
     }

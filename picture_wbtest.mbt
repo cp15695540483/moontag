@@ -123,6 +123,55 @@ test "FLAC PICTURE：宽高从 PNG 头推出，未知图片写 0" {
 }
 
 ///|
+/// 造一个最小合法 FLAC：`fLaC` + 单个 PICTURE 块（标记为最后一块）。
+/// 块头是 1 字节「最后块标志 + 类型码」+ 3 字节大端长度。
+fn tb_flac_with_picture(payload : Bytes) -> Bytes {
+  let b = @buffer.Buffer()
+  b.write_bytes(Bytes::from_array([0x66, 0x4C, 0x61, 0x43])) // "fLaC"
+  let len = payload.length()
+  b.write_byte((0x86).to_byte()) // 0x80 最后块 | 6 PICTURE
+  b.write_byte(((len >> 16) & 0xFF).to_byte())
+  b.write_byte(((len >> 8) & 0xFF).to_byte())
+  b.write_byte((len & 0xFF).to_byte())
+  b.write_bytes(payload)
+  b.to_bytes()
+}
+
+///|
+test "FLAC 原生 PICTURE 块：能从块里读出封面" {
+  let img = tb_png_bytes(48, 32)
+  let payload = serialize_flac_picture(
+    picture("image/png", FrontCover, "封", img),
+  ) catch {
+    e => abort("序列化失败: \{e.message()}")
+  }
+  let file = tb_flac_with_picture(payload)
+  let got : Picture? = flac_picture(file.exact_view()) catch {
+    e => abort("读取失败: \{e.message()}")
+  }
+  let pic = match got {
+    Some(p) => p
+    None => abort("没有读出 PICTURE 块")
+  }
+  @test.assert_eq(pic.mime, "image/png")
+  @test.assert_eq(pic.raw_type, 3)
+  @test.assert_eq(pic.description, "封")
+  @test.assert_eq(tb_bytes_eq(pic.data, img), true)
+}
+
+///|
+test "FLAC 没有 PICTURE 块时返回 None，不报错" {
+  // 只有 STREAMINFO 块（类型 0，标记为最后一块，载荷 4 字节）
+  let file = Bytes::from_array([
+    0x66, 0x4C, 0x61, 0x43, 0x80, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00,
+  ])
+  let got : Picture? = flac_picture(file.exact_view()) catch {
+    e => abort("不该报错: \{e.message()}")
+  }
+  @test.assert_eq(got is None, true)
+}
+
+///|
 test "Vorbis Comment 封面：写入后能读回，删除后为空" {
   let img = tb_png_bytes(64, 64)
   let pic = picture("image/png", FrontCover, "", img)

@@ -140,13 +140,11 @@ fn read_flac_info(data : BytesView) -> TrackInfo raise TagError {
     Some(_) => true
     None => false
   }
-  let meta : FlacMeta? = Some(parse_meta(data)) catch { _ => None }
-  let from_block = match meta {
-    Some(m) =>
-      match m.block(Picture) {
-        Some(_) => true
-        None => false
-      }
+  // FLAC 原生 PICTURE 块（块类型 6）与 comment 里的 METADATA_BLOCK_PICTURE
+  // 是两套并存的机制，都要看；块解析失败不该让整个视图失败。
+  let cover_block : Picture? = flac_picture(data) catch { _ => None }
+  let from_block = match cover_block {
+    Some(_) => true
     None => false
   }
   {
