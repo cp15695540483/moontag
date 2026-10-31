@@ -51,6 +51,7 @@ import {
 | MP4/M4A | ilst | ✅ 全部条目 + 封面 | ✅ 改写（保留 mdat 与其它盒、**修正 chunk 偏移**） |
 | Ogg | Vorbis Comment（Vorbis/Opus） | ✅ vendor + 全部条目 | ✅ 改写（音频页原样保留、PCM 零损失） |
 | Ogg | 封面 `METADATA_BLOCK_PICTURE` | ✅ Base64 → FLAC PICTURE 载荷 | ✅ 写入/替换（宽高从 PNG/JPEG 头自动填） |
+| FLAC | 封面 PICTURE 块（类型 6） | ✅ 类型/MIME/描述/宽高/图片数据 | 原样保留（不新增块；改写不会丢掉已有块） |
 
 ### 统一视图（`read_track_info`）覆盖范围
 
@@ -298,7 +299,7 @@ moon run cmd/tag -- set song.m4a "©nam=新标题"
 
 # 封面：MP3 写 ID3v2 APIC，Ogg 写 Vorbis METADATA_BLOCK_PICTURE（按容器自动分派）
 moon run cmd/tag -- cover song.mp3 cover.png   # 嵌入（MP3 / Ogg）
-moon run cmd/tag -- apic  song.mp3 out.png     # 提取（MP3 / Ogg）
+moon run cmd/tag -- apic  song.mp3 out.png     # 提取（MP3 / Ogg / FLAC）
 moon run cmd/tag -- apics song.mp3             # 列出全部 APIC（MP3）
 
 # 指定格式的子命令
@@ -335,7 +336,7 @@ v2.4 则按帧作用。混用这两套语义是 ID3 实现最常见的 bug，本
 
 ## 测试
 
-140 个单元测试，`wasm-gc` 与 `js` 双后端全绿：
+142 个单元测试，`wasm-gc` 与 `js` 双后端全绿：
 
 ```bash
 moon test --target wasm-gc
@@ -376,13 +377,15 @@ moon test --target js
 | MP4 ilst 读写 | `ffmpeg -i` | title/album/date 读回一致，音频时长不变 |
 | ID3v2 帧级压缩（v2.4） | `ffmpeg 7.1` | 双方都读出被压缩的 artist；改写后 PCM 逐字节相同 |
 | ID3v2 帧级压缩（v2.3） | `ffmpeg 7.1` | ffmpeg **静默丢掉**该帧（本库可读）——用于划清能力边界，不是缺陷对照 |
+| FLAC 原生 PICTURE 块 | `metaflac 1.5.0` | `--import-picture-from` 造块后本库读出（类型 3 / image/png / 32×32）；改写标签后块仍在 |
+| Ogg 封面（`METADATA_BLOCK_PICTURE`） | 本库往返 + `ffmpeg` 音频校验 | 写入后统一视图显示「有」，提取与原 PNG 逐字节相同，音频 PCM 不变 |
 
 压缩帧夹具（`tools/samples/cframe_*.mp3`、`control_*.mp3`）由
 `tools/make_cframe_fixtures.py` 按 id3.org 规范手工构造并自校验（帧尺寸编码、
 DLI/解压后尺寸与 `zlib.decompress` 的实际长度一致、音频体与基准样本逐字节一致），
 来源与期望值记在 `tools/samples/README.md`。
 
-端到端脚本：`bash tools/e2e.sh`（CI 里同样执行；共 42 项断言）。
+端到端脚本：`bash tools/e2e.sh`（CI 里同样执行；共 45 项断言）。
 
 ## 许可证
 

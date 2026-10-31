@@ -11,7 +11,10 @@
 - **新增 Ogg 封面**（`METADATA_BLOCK_PICTURE`）：Base64 编解码（RFC 4648）、FLAC PICTURE 载荷
   编解码、宽高从 PNG/JPEG 头自动解析；`cover` / `apic` 子命令按容器自动分派
   （MP3 → ID3v2 APIC，Ogg → Vorbis Comment 的 METADATA_BLOCK_PICTURE）。
-  统一视图对 Ogg 与 FLAC 的 `has_cover` 从此可判。单测 132 → 140，e2e 37 → 42。
+- **新增 FLAC 原生 PICTURE 块读取**（块类型 6）：`flac_picture()` 解析类型/MIME/描述/
+  宽高/数据；统一视图对 FLAC 同时认原生块与 comment 键；`apic` 可按 FLAC 提取封面。
+  实测改写标签后 PICTURE 块原样保留（metaflac 复核）。
+- 测试：单测 132 → 142，e2e 37 → 45（新增 Ogg 封面 5 条、FLAC 封面 3 条）。
 - CI 新增「测试（警告即失败）」步骤：`moon test --target wasm-gc --deny-warn`。
 - **更正 `docs/demo.mp4` 的描述**：该视频由 AI 视频工具生成，是流程示意渲染而非终端录屏。
   `docs/README.md` 与 0.1.1 条目此前写作「终端实录渲染」「完整读写流程实录」，属不实描述，

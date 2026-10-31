@@ -131,6 +131,24 @@ else
   bad "flac -t 失败（音频被破坏）"
 fi
 
+# FLAC 的原生封面是 PICTURE 元数据块（块类型 6），与 Ogg 只能走 comment 不同。
+# 用 metaflac 造一个真实块，再验证：本库认得出来、改标签后不丢、能原样提取。
+echo "== FLAC 原生 PICTURE 块（封面） =="
+cp "$SAMPLES/base.flac" "$tmp/pic.flac"
+"$METAFLAC" --import-picture-from="$SAMPLES/cover.png" "$tmp/pic.flac" >/dev/null 2>&1
+"$MOON" run cmd/tag --target wasm-gc -- set "$tmp/pic.flac" "TITLE=带封面改标题" >/dev/null 2>&1
+pic_show=$("$MOON" run cmd/tag --target wasm-gc -- show "$tmp/pic.flac" 2>&1)
+echo "$pic_show" | grep -q "封面: 有" &&
+  pass "FLAC 原生 PICTURE 块被统一视图识别为封面" || bad "FLAC 原生 PICTURE 块未被识别"
+"$METAFLAC" --list --block-type=PICTURE "$tmp/pic.flac" 2>/dev/null | grep -q "type: 6" &&
+  pass "改标签后 PICTURE 块仍在（metaflac 复核）" || bad "改标签后 PICTURE 块丢失"
+"$MOON" run cmd/tag --target wasm-gc -- apic "$tmp/pic.flac" "$tmp/flacpic.png" >/dev/null 2>&1
+if cmp -s "$SAMPLES/cover.png" "$tmp/flacpic.png"; then
+  pass "FLAC 封面提取与原 PNG 逐字节相同"
+else
+  bad "FLAC 封面提取不一致"
+fi
+
 echo "== MP4 / M4A ilst =="
 cp "$SAMPLES/base.m4a" "$tmp/w.m4a"
 "$MOON" run cmd/tag --target wasm-gc -- mp4 set "$tmp/w.m4a" "©nam=新标题" "©alb=新专辑" \
