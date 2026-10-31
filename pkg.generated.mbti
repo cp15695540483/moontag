@@ -2,9 +2,15 @@
 package "cp15695540483/moontag"
 
 // Values
+pub const METADATA_BLOCK_PICTURE : String = "METADATA_BLOCK_PICTURE"
+
 pub const OGG_HEADER_SIZE : Int = 27
 
 pub fn assemble_packets(Bytes, Array[OggPage]) -> Array[Bytes]
+
+pub fn base64_decode(String) -> Bytes raise TagError
+
+pub fn base64_encode(BytesView) -> String
 
 pub fn cover_of(Array[Mp4Tag]) -> Bytes?
 
@@ -32,6 +38,8 @@ pub fn parse(BytesView) -> Id3Tag raise TagError
 
 pub fn parse_ape(BytesView) -> ApeTag? raise TagError
 
+pub fn parse_flac_picture(BytesView) -> Picture raise TagError
+
 pub fn parse_ilst(BytesView, Mp4Box) -> Array[Mp4Tag] raise TagError
 
 pub fn parse_meta(BytesView) -> FlacMeta raise TagError
@@ -54,6 +62,8 @@ pub fn read_track_info(BytesView) -> TrackInfo raise TagError
 
 pub fn read_vorbis_comment(BytesView) -> VorbisComment? raise TagError
 
+pub fn serialize_flac_picture(Picture) -> Bytes raise TagError
+
 pub fn serialize_picture(Picture, Int) -> Bytes raise TagError
 
 pub fn serialize_vorbis_comment(VorbisComment) -> Bytes
@@ -70,11 +80,15 @@ pub fn set_picture(BytesView, Picture?, WriteOptions) -> Bytes raise TagError
 
 pub fn set_vorbis_comment(BytesView, VorbisComment) -> Bytes raise TagError
 
+pub fn set_vorbis_picture(VorbisComment, Picture?) -> VorbisComment raise TagError
+
 pub fn split_strings(BytesView, TextEncoding, Int, Int) -> Array[String]
 
 pub fn text_of(Array[Mp4Tag], String) -> String?
 
 pub fn unsynchronise(BytesView) -> Bytes
+
+pub fn vorbis_picture(VorbisComment) -> Picture?
 
 // Errors
 pub suberror TagError {

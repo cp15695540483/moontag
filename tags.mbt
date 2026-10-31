@@ -119,16 +119,35 @@ fn read_ogg_info(data : BytesView) -> TrackInfo raise TagError {
     date: vc.get("DATE"),
     genre: vc.get("GENRE"),
     comment: vc.get("COMMENT"),
-    has_cover: false,
+    has_cover: match vorbis_picture(vc) {
+      Some(_) => true
+      None => false
+    },
   }
 }
 
 ///|
 /// FLAC 的统一视图。
+///
+/// 封面的来源有两条且都要看：FLAC 原生的 PICTURE 块（类型 6），
+/// 以及 Vorbis Comment 里的 `METADATA_BLOCK_PICTURE`（后者与 Ogg 同源）。
 fn read_flac_info(data : BytesView) -> TrackInfo raise TagError {
   let vc = match read_vorbis_comment(data) {
     Some(c) => c
     None => return empty_info(Flac)
+  }
+  let from_comment = match vorbis_picture(vc) {
+    Some(_) => true
+    None => false
+  }
+  let meta : FlacMeta? = Some(parse_meta(data)) catch { _ => None }
+  let from_block = match meta {
+    Some(m) =>
+      match m.block(Picture) {
+        Some(_) => true
+        None => false
+      }
+    None => false
   }
   {
     format: Flac,
@@ -139,7 +158,7 @@ fn read_flac_info(data : BytesView) -> TrackInfo raise TagError {
     date: vc.get("DATE"),
     genre: vc.get("GENRE"),
     comment: vc.get("COMMENT"),
-    has_cover: false,
+    has_cover: from_comment || from_block,
   }
 }
 
