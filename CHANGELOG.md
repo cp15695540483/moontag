@@ -8,6 +8,11 @@
 - CI 新增「可运行示例」步骤：每次构建实际执行 `examples/read_tag`（MP3 / FLAC / M4A 各一次），
   让「示例可执行」成为构建检查项而不只是文档承诺。
 - 补充本更新日志与版本 tag（v0.1.0 / v0.1.1 / v0.2.0）。
+- **新增 Ogg 封面**（`METADATA_BLOCK_PICTURE`）：Base64 编解码（RFC 4648）、FLAC PICTURE 载荷
+  编解码、宽高从 PNG/JPEG 头自动解析；`cover` / `apic` 子命令按容器自动分派
+  （MP3 → ID3v2 APIC，Ogg → Vorbis Comment 的 METADATA_BLOCK_PICTURE）。
+  统一视图对 Ogg 与 FLAC 的 `has_cover` 从此可判。单测 132 → 140，e2e 37 → 42。
+- CI 新增「测试（警告即失败）」步骤：`moon test --target wasm-gc --deny-warn`。
 
 ## 0.2.0（2026-10-31）
 

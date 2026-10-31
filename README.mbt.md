@@ -47,9 +47,10 @@ import {
 | MP3 | APIC 封面 | ✅ MIME/类型/描述/图片数据 | ✅ 嵌入/替换/删除 |
 | MP3 | APEv2（尾部） | ✅ 条目 + 二进制标志 | ✅ 改写（不叠加） |
 | FLAC | VORBIS_COMMENT | ✅ vendor + 全部条目 | ✅ 改写（含 padding 复用） |
-| FLAC | 元数据块链 | ✅ 遍历（含保留类型块） | ✅ 原样保留 |
+| FLAC | 元数据块链 | ✅ 遍历（含保留类型块）；封面认 PICTURE 块与 `METADATA_BLOCK_PICTURE` | ✅ 原样保留 |
 | MP4/M4A | ilst | ✅ 全部条目 + 封面 | ✅ 改写（保留 mdat 与其它盒、**修正 chunk 偏移**） |
 | Ogg | Vorbis Comment（Vorbis/Opus） | ✅ vendor + 全部条目 | ✅ 改写（音频页原样保留、PCM 零损失） |
+| Ogg | 封面 `METADATA_BLOCK_PICTURE` | ✅ Base64 → FLAC PICTURE 载荷 | ✅ 写入/替换（宽高从 PNG/JPEG 头自动填） |
 
 ### 统一视图（`read_track_info`）覆盖范围
 
@@ -157,8 +158,6 @@ TagLib 侧未逐行核验，不在此并列引用。
 - **不做 `moov` 后的 padding 复用**：`moov` 之后的 `free` 空间不保证存在
   （faststart 文件常仅 8 字节），本实现选择通用路径——一律按 `delta` 修正偏移，
   而不是"有 padding 才安全"；
-- **Ogg 的 PICTURE 块（METADATA_BLOCK_PICTURE）**：FLAC 的 PICTURE 语义
-  封装进 Ogg comment 的 base64 条目，属下一增量；
 - **Ogg 流的 seek/重新封装**：只重建头两页并保持音频页原样，页内字节
   （含 CRC）不改——这是"无损重写"的边界。
 
@@ -297,10 +296,10 @@ moon run cmd/tag -- set song.mp3 "TIT2=新标题" "TPE1=艺术家"
 moon run cmd/tag -- set song.flac "TITLE=新标题"
 moon run cmd/tag -- set song.m4a "©nam=新标题"
 
-# 封面（ID3v2）
-moon run cmd/tag -- cover song.mp3 cover.png   # 嵌入
-moon run cmd/tag -- apic  song.mp3 out.png     # 提取
-moon run cmd/tag -- apics song.mp3             # 列出全部
+# 封面：MP3 写 ID3v2 APIC，Ogg 写 Vorbis METADATA_BLOCK_PICTURE（按容器自动分派）
+moon run cmd/tag -- cover song.mp3 cover.png   # 嵌入（MP3 / Ogg）
+moon run cmd/tag -- apic  song.mp3 out.png     # 提取（MP3 / Ogg）
+moon run cmd/tag -- apics song.mp3             # 列出全部 APIC（MP3）
 
 # 指定格式的子命令
 moon run cmd/tag -- flac show song.flac
@@ -336,7 +335,7 @@ v2.4 则按帧作用。混用这两套语义是 ID3 实现最常见的 bug，本
 
 ## 测试
 
-132 个单元测试，`wasm-gc` 与 `js` 双后端全绿：
+140 个单元测试，`wasm-gc` 与 `js` 双后端全绿：
 
 ```bash
 moon test --target wasm-gc
@@ -383,7 +382,7 @@ moon test --target js
 DLI/解压后尺寸与 `zlib.decompress` 的实际长度一致、音频体与基准样本逐字节一致），
 来源与期望值记在 `tools/samples/README.md`。
 
-端到端脚本：`bash tools/e2e.sh`（CI 里同样执行；共 37 项断言）。
+端到端脚本：`bash tools/e2e.sh`（CI 里同样执行；共 42 项断言）。
 
 ## 许可证
 
