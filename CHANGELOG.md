@@ -2,7 +2,7 @@
 
 版本号以 mooncakes.io 上 `cp15695540483/moontag` 的发布记录为准；日期为发布时间（+08:00）。
 
-## 未发布
+## 0.2.1（2026-10-31）
 
 - README 新增「可运行示例」一节，给出 `examples/read_tag` 与 CLI 的可复制命令（此前 README 未指向示例工程）。
 - CI 新增「可运行示例」步骤：每次构建实际执行 `examples/read_tag`（MP3 / FLAC / M4A 各一次），
