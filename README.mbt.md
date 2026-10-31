@@ -185,6 +185,28 @@ TagLib 侧未逐行核验，不在此并列引用。
 
 ## 快速开始
 
+### 可运行示例（先跑这个）
+
+仓库自带示例工程，不依赖被测库以外的任何东西：
+
+```bash
+moon run examples/read_tag -- tools/samples/v24.mp3   # MP3 / ID3v2
+moon run examples/read_tag -- tools/samples/base.flac # FLAC
+moon run examples/read_tag -- tools/samples/base.m4a  # M4A
+```
+
+CI 每次都会跑上面第一条，所以「示例能执行」不是承诺而是每次构建的检查项。
+
+也可以直接用 CLI：
+
+```bash
+moon run cmd/tag -- show tools/samples/v24.mp3        # 统一视图
+moon run cmd/tag -- dump tools/samples/v24.mp3        # 原始帧
+```
+
+下面各小节的代码片段是 **API 示意（`nocheck`，不参与编译）**，可直接运行的完整实现见
+`examples/read_tag/main.mbt`。
+
 ### 统一视图（推荐）
 
 一个函数读任意格式，字段已归一：

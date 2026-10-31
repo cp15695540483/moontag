@@ -46,6 +46,14 @@ jobs:
       - name: 测试（js 后端）
         run: moon test --target js
 
+      # 验收要求「提供可以实际运行的示例」：这里真的把示例跑一遍，
+      # 而不是只在 README 里写它能跑。
+      - name: 可运行示例
+        run: |
+          moon run examples/read_tag --target wasm-gc -- tools/samples/v24.mp3
+          moon run examples/read_tag --target wasm-gc -- tools/samples/base.flac
+          moon run examples/read_tag --target wasm-gc -- tools/samples/base.m4a
+
       # 端到端：样本在 tools/samples/ 里已提交，这里只安装读取工具。
       # e2e 只用 ffmpeg 的读取能力，不依赖其编码器配置。
       - name: 安装对拍工具
