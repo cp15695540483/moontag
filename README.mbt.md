@@ -387,6 +387,28 @@ DLI/解压后尺寸与 `zlib.decompress` 的实际长度一致、音频体与基
 
 端到端脚本：`bash tools/e2e.sh`（CI 里同样执行；共 45 项断言）。
 
+## 已验证的构建环境（兼容性声明）
+
+本仓库的构建、测试与示例按 README 声明的目标后端验证，**被测工具链版本如下**
+（可用 `moon version --all` 复核）：
+
+| 验证时间 | `moon` | `moonc` | 验证方式 |
+|---|---|---|---|
+| 2026-11-12 | `0.1.20261104 (940aa18 2026-11-04)` | `v0.10.20+65efd5b93 (2026-11-05)` | GitHub Actions `CI` run `43257743461`（`workflow_dispatch`，安装 `latest`）→ success |
+| 2026-11-13 | 同上（本地安装同版本复核） | 同上 | `moon fmt --check` / `moon check --deny-warn` / `moon build` / `moon test`(wasm-gc & js，142 用例) / `bash tools/e2e.sh` 全通过 |
+
+**目标后端**：`wasm-gc`（`preferred_target`）与 `js`，两者都在 CI 中执行
+`check --deny-warn`、`build`、`test --deny-warn`。
+**未声明支持的平台**：`native` 后端未纳入验证（本机与 CI 均不安装 MSVC / C 工具链），
+因此不承诺 native 可用；如需 native，请先在本地确认后在 issue 中补充结果。
+
+CI 安装工具链使用官方安装脚本的 `latest` 通道，并在日志中打印 `moon version --all`，
+因此每次构建都会暴露工具链漂移（旧版本钉死会因 CDN 只保留 `latest`/`nightly` 而 404/403）。
+
+已知的**工具链漂移表现**（非缺陷）：跨工具链升级时 `moon info` 可能把
+`pkg.generated.mbti` 里的 `Int` 归一化为 `Int32`（同一类型别名），此时重新生成该文件即可；
+它不影响源码语义，也不影响 CI（CI 不校验该文件的字节）。
+
 ## 许可证
 
 Apache-2.0。本项目为原创实现，参考 ID3v2.4.0 与 ID3v2.3.0 非正式标准

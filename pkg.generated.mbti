@@ -4,7 +4,7 @@ package "cp15695540483/moontag"
 // Values
 pub const METADATA_BLOCK_PICTURE : String = "METADATA_BLOCK_PICTURE"
 
-pub const OGG_HEADER_SIZE : Int = 27
+pub const OGG_HEADER_SIZE : Int32 = 27
 
 pub fn assemble_packets(Bytes, Array[OggPage]) -> Array[Bytes]
 
@@ -26,15 +26,15 @@ pub fn find_ilst(BytesView) -> Mp4Box? raise TagError
 
 pub fn flac_picture(BytesView) -> Picture? raise TagError
 
-pub fn make_page(Int, Int, Int, Int64, Bytes) -> Bytes
+pub fn make_page(Int32, Int32, Int32, Int64, Bytes) -> Bytes
 
-pub fn make_page_multi(Int, Int, Int, Int64, Array[Bytes]) -> Bytes
+pub fn make_page_multi(Int32, Int32, Int32, Int64, Array[Bytes]) -> Bytes
 
 pub fn mp4_cover_tag(Bytes, Bool) -> Mp4Tag
 
 pub fn mp4_text_tag(String, String) -> Mp4Tag
 
-pub fn ogg_crc32(Bytes) -> UInt
+pub fn ogg_crc32(Bytes) -> UInt32
 
 pub fn parse(BytesView) -> Id3Tag raise TagError
 
@@ -48,7 +48,7 @@ pub fn parse_meta(BytesView) -> FlacMeta raise TagError
 
 pub fn parse_ogg_comment_payload(OggCommentLoc) -> VorbisComment raise TagError
 
-pub fn parse_page(Bytes, Int) -> OggPage raise TagError
+pub fn parse_page(Bytes, Int32) -> OggPage raise TagError
 
 pub fn parse_picture(BytesView) -> Picture raise TagError
 
@@ -66,7 +66,7 @@ pub fn read_vorbis_comment(BytesView) -> VorbisComment? raise TagError
 
 pub fn serialize_flac_picture(Picture) -> Bytes raise TagError
 
-pub fn serialize_picture(Picture, Int) -> Bytes raise TagError
+pub fn serialize_picture(Picture, Int32) -> Bytes raise TagError
 
 pub fn serialize_vorbis_comment(VorbisComment) -> Bytes
 
@@ -84,7 +84,7 @@ pub fn set_vorbis_comment(BytesView, VorbisComment) -> Bytes raise TagError
 
 pub fn set_vorbis_picture(VorbisComment, Picture?) -> VorbisComment raise TagError
 
-pub fn split_strings(BytesView, TextEncoding, Int, Int) -> Array[String]
+pub fn split_strings(BytesView, TextEncoding, Int32, Int32) -> Array[String]
 
 pub fn text_of(Array[Mp4Tag], String) -> String?
 
@@ -94,14 +94,14 @@ pub fn vorbis_picture(VorbisComment) -> Picture?
 
 // Errors
 pub suberror TagError {
-  Truncated(offset~ : Int, need~ : Int, actual~ : Int)
+  Truncated(offset~ : Int32, need~ : Int32, actual~ : Int32)
   NotTagged(format~ : String)
   BadHeader(reason~ : String)
   BadFrameHeader(reason~ : String)
-  FrameOutOfBounds(frame_id~ : String, size~ : Int, available~ : Int)
+  FrameOutOfBounds(frame_id~ : String, size~ : Int32, available~ : Int32)
   BadFrameData(frame_id~ : String, reason~ : String)
   Unsupported(what~ : String)
-  UnsupportedVersion(version~ : Int)
+  UnsupportedVersion(version~ : Int32)
 }
 pub fn TagError::message(Self) -> String
 
@@ -114,8 +114,8 @@ pub struct ApeItem {
 
 pub struct ApeTag {
   items : Array[ApeItem]
-  size : Int
-  offset : Int
+  size : Int32
+  offset : Int32
 }
 pub fn ApeTag::get(Self, String) -> Bytes?
 pub fn ApeTag::set(Self, String, Bytes) -> Self raise TagError
@@ -132,13 +132,13 @@ pub fn AudioFormat::name(Self) -> String
 
 pub struct ExistingTag {
   tag : Id3Tag?
-  size : Int
+  size : Int32
 }
 
 pub struct FlacBlock {
-  code : Int
-  offset : Int
-  length : Int
+  code : Int32
+  offset : Int32
+  length : Int32
   is_last : Bool
 }
 
@@ -153,30 +153,30 @@ pub enum FlacBlockType {
   Reserved
   Invalid
 }
-pub fn FlacBlockType::code(Self) -> Int
-pub fn FlacBlockType::from_code(Int) -> Self
+pub fn FlacBlockType::code(Self) -> Int32
+pub fn FlacBlockType::from_code(Int32) -> Self
 
 pub struct FlacMeta {
   blocks : Array[FlacBlock]
-  audio_offset : Int
+  audio_offset : Int32
 }
 pub fn FlacMeta::block(Self, FlacBlockType) -> FlacBlock?
 
 pub struct Frame {
   id : String
   data : Bytes
-  status_flags : Int
-  format_flags : Int
-  group : Int?
+  status_flags : Int32
+  format_flags : Int32
+  group : Int32?
 }
 pub fn Frame::as_text(Self) -> String? raise TagError
 
 pub struct Id3Tag {
-  major : Int
-  revision : Int
-  flags : Int
+  major : Int32
+  revision : Int32
+  flags : Int32
   frames : Array[Frame]
-  total_size : Int
+  total_size : Int32
 }
 pub fn Id3Tag::frame(Self, String) -> Frame?
 pub fn Id3Tag::frames_with_id(Self, String) -> Array[Frame]
@@ -186,42 +186,42 @@ pub fn Id3Tag::text(Self, String) -> String? raise TagError
 
 pub struct Mp4Box {
   kind : String
-  offset : Int
-  length : Int
-  start : Int
+  offset : Int32
+  length : Int32
+  start : Int32
 }
 
 pub struct Mp4Tag {
   key : String
   value : Bytes
-  data_type : Int
+  data_type : Int32
 }
 
 pub struct OggCommentLoc {
   payload : Bytes
-  end_offset : Int
-  serial : Int
+  end_offset : Int32
+  serial : Int32
   is_opus : Bool
 }
 
 pub struct OggPage {
-  offset : Int
-  n_segments : Int
-  total_len : Int
-  body_offset : Int
+  offset : Int32
+  n_segments : Int32
+  total_len : Int32
+  body_offset : Int32
   is_bos : Bool
   is_eos : Bool
   is_continued : Bool
-  serial : Int
-  seq : Int
+  serial : Int32
+  seq : Int32
   data : Bytes
 }
-pub fn OggPage::segment_len(Self, Int) -> Int
+pub fn OggPage::segment_len(Self, Int32) -> Int32
 
 pub struct Picture {
   mime : String
   picture_type : PictureType
-  raw_type : Int
+  raw_type : Int32
   description : String
   data : Bytes
 }
@@ -249,8 +249,8 @@ pub(all) enum PictureType {
   BandLogotype
   PublisherLogotype
 }
-pub fn PictureType::code(Self) -> Int
-pub fn PictureType::from_code(Int) -> Self
+pub fn PictureType::code(Self) -> Int32
+pub fn PictureType::from_code(Int32) -> Self
 
 pub struct TagField {
   id : String
@@ -263,10 +263,10 @@ pub enum TextEncoding {
   Utf16Be
   Utf8
 }
-pub fn TextEncoding::code(Self) -> Int
+pub fn TextEncoding::code(Self) -> Int32
 pub fn TextEncoding::decode(Self, BytesView) -> String
-pub fn TextEncoding::from_code(Int) -> Self raise TagError
-pub fn TextEncoding::terminator_len(Self) -> Int
+pub fn TextEncoding::from_code(Int32) -> Self raise TagError
+pub fn TextEncoding::terminator_len(Self) -> Int32
 
 pub struct TrackInfo {
   format : AudioFormat
@@ -289,8 +289,8 @@ pub fn VorbisComment::get_all(Self, String) -> Array[String]
 pub fn VorbisComment::set_key(Self, String, String) -> Self raise TagError
 
 pub struct WriteOptions {
-  padding : Int
-  default_major : Int
+  padding : Int32
+  default_major : Int32
 }
 pub fn WriteOptions::default() -> Self
 
